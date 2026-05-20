@@ -169,10 +169,52 @@ function TaskForm({ members, initial, onSave, onCancel }) {
 
 // ─── Meeting Notes ──────────────────────────────────────────────────────────
 
-function MeetingNotes({ notes, onSave }) {
+function MeetingNotes({ notes, onSave, members, onAddTasks }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(notes);
+  const [extracting, setExtracting] = useState(false);
+  const [extracted, setExtracted] = useState(null);
+  const [extractError, setExtractError] = useState("");
   const today = new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
+
+  async function extractTasks() {
+    const text = notes || draft;
+    if (!text.trim()) return;
+    setExtracting(true);
+    setExtractError("");
+    setExtracted(null);
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          system: `Eres un asistente de gestión de equipos. Extrae tareas accionables de las notas de reunión. 
+El equipo es: ${members.join(", ")}.
+Responde SOLO con un JSON válido, sin texto adicional, sin markdown, con este formato exacto:
+{"tasks":[{"person":"nombre exacto del miembro","title":"descripción corta de la tarea","priority":"alta|media|baja","status":"pendiente|en-curso|bloqueado","deadline":"YYYY-MM-DD o vacío","notes":"contexto adicional o vacío"}]}
+Si no puedes asignar a alguien del equipo deja person vacío. Extrae solo tareas concretas y accionables.`,
+          messages: [{ role: "user", content: `Notas del meeting:
+${text}` }]
+        })
+      });
+      const data = await response.json();
+      const raw = data.content?.find(b => b.type === "text")?.text || "{}";
+      const clean = raw.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(clean);
+      setExtracted(parsed.tasks || []);
+    } catch(e) {
+      setExtractError("Error al extraer tareas. Inténtalo de nuevo.");
+    }
+    setExtracting(false);
+  }
+
+  function confirmTasks() {
+    const valid = extracted.filter(t => t.title && t.person);
+    onAddTasks(valid);
+    setExtracted(null);
+  }
 
   return (
     <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 20, marginBottom: 20 }}>
@@ -181,23 +223,66 @@ function MeetingNotes({ notes, onSave }) {
           <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: COLORS.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 3 }}>Morning meeting</div>
           <div style={{ fontSize: 13, color: COLORS.muted, textTransform: "capitalize" }}>{today}</div>
         </div>
-        <Btn variant="ghost" style={{ fontSize: 11, padding: "6px 12px" }} onClick={() => { setEditing(!editing); setDraft(notes); }}>
-          {editing ? "Cancelar" : "✏️ Editar"}
-        </Btn>
+        <div style={{ display: "flex", gap: 8 }}>
+          {notes && !editing && (
+            <Btn variant="ghost" style={{ fontSize: 11, padding: "6px 12px" }} onClick={extractTasks} disabled={extracting}>
+              {extracting ? "⏳ Analizando..." : "🤖 Extraer tareas"}
+            </Btn>
+          )}
+          <Btn variant="ghost" style={{ fontSize: 11, padding: "6px 12px" }} onClick={() => { setEditing(!editing); setDraft(notes); setExtracted(null); }}>
+            {editing ? "Cancelar" : "✏️ Editar"}
+          </Btn>
+        </div>
       </div>
+
       {editing ? (
         <>
           <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={6}
             placeholder="Apuntes del meeting de hoy..."
             style={{ width: "100%", background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 5, color: COLORS.text, padding: "10px 12px", fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit", resize: "vertical" }} />
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-            <Btn onClick={() => { onSave(draft); setEditing(false); }}>Guardar notas</Btn>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10, gap: 8 }}>
+            <Btn variant="ghost" style={{ fontSize: 11 }} onClick={() => { onSave(draft); setEditing(false); }}>Guardar notas</Btn>
+            <Btn onClick={() => { onSave(draft); setEditing(false); setTimeout(extractTasks, 300); }}>Guardar y extraer tareas</Btn>
           </div>
         </>
       ) : (
         <div style={{ fontSize: 13, color: notes ? COLORS.text : COLORS.muted, lineHeight: 1.7, whiteSpace: "pre-wrap", minHeight: 48 }}>
           {notes || "Sin notas de hoy. Pulsa editar para añadir..."}
         </div>
+      )}
+
+      {extractError && (
+        <div style={{ marginTop: 12, fontSize: 12, color: COLORS.danger }}>{extractError}</div>
+      )}
+
+      {extracted && extracted.length > 0 && (
+        <div style={{ marginTop: 16, borderTop: `1px solid ${COLORS.border}`, paddingTop: 16 }}>
+          <div style={{ fontSize: 11, color: COLORS.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12, fontFamily: "'DM Mono', monospace" }}>
+            🤖 Tareas extraídas ({extracted.length})
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+            {extracted.map((t, i) => (
+              <div key={i} style={{ background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 6, padding: "10px 14px" }}>
+                <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>{t.title}</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  {t.person && <span style={{ fontSize: 11, color: COLORS.accent, fontWeight: 600 }}>{t.person}</span>}
+                  {t.priority && <Tag label={PRIORITY_CONFIG[t.priority]?.label || t.priority} color={PRIORITY_CONFIG[t.priority]?.color || COLORS.muted} />}
+                  {t.status && <Tag label={STATUS_CONFIG[t.status]?.label || t.status} color={STATUS_CONFIG[t.status]?.color || COLORS.muted} />}
+                  {t.deadline && <span style={{ fontSize: 11, color: COLORS.muted }}>{formatDate(t.deadline)}</span>}
+                </div>
+                {t.notes && <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 4 }}>{t.notes}</div>}
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <Btn variant="ghost" style={{ fontSize: 11 }} onClick={() => setExtracted(null)}>Descartar</Btn>
+            <Btn onClick={confirmTasks}>✅ Añadir al hub</Btn>
+          </div>
+        </div>
+      )}
+
+      {extracted && extracted.length === 0 && (
+        <div style={{ marginTop: 12, fontSize: 12, color: COLORS.muted }}>No se encontraron tareas accionables en las notas.</div>
       )}
     </div>
   );
@@ -537,7 +622,24 @@ export default function TeamHub() {
         {/* Tab: Meeting */}
         {activeTab === "meeting" && (
           <div>
-            <MeetingNotes notes={meetingNotes[todayKey] || ""} onSave={saveNote} />
+            <MeetingNotes
+              notes={meetingNotes[todayKey] || ""}
+              onSave={saveNote}
+              members={members}
+              onAddTasks={(newTasks) => {
+                const withIds = newTasks.map((t, i) => ({
+                  ...t,
+                  id: Date.now() + i,
+                  createdAt: new Date().toISOString().slice(0, 10),
+                  person: t.person || members[0] || "",
+                  status: t.status || "pendiente",
+                  priority: t.priority || "media",
+                  deadline: t.deadline || "",
+                  notes: t.notes || "",
+                }));
+                saveTasks([...tasks, ...withIds]);
+              }}
+            />
             {/* Historial */}
             {Object.keys(meetingNotes).filter(k => k !== todayKey).sort((a, b) => b.localeCompare(a)).slice(0, 7).length > 0 && (
               <div>

@@ -169,7 +169,7 @@ function TaskForm({ members, initial, onSave, onCancel }) {
 
 // ─── Meeting Notes ──────────────────────────────────────────────────────────
 
-function MeetingNotes({ notes, onSave, members, onAddTasks }) {
+function MeetingNotes({ notes, onSave, members, tasks, onAddTasks }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(notes);
   const [extracting, setExtracting] = useState(false);
@@ -695,6 +695,7 @@ export default function TeamHub() {
               notes={meetingNotes[todayKey] || ""}
               onSave={saveNote}
               members={members}
+              tasks={tasks}
               onAddTasks={(newTasks, updates) => {
                 const today = new Date().toISOString().slice(0, 10);
                 const withIds = newTasks.map((t, i) => ({

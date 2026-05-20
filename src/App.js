@@ -250,7 +250,7 @@ function MeetingNotes({ notes, onSave, members, onAddTasks }) {
         <div style={{ marginTop: 12, fontSize: 12, color: COLORS.danger }}>{extractError}</div>
       )}
 
-      {(extracted && extracted.length > 0 || extractedUpdates && extractedUpdates.length > 0) && (
+      {((extracted && extracted.length > 0) || (extractedUpdates && extractedUpdates.length > 0)) && (
         <div style={{ marginTop: 16, borderTop: `1px solid ${COLORS.border}`, paddingTop: 16 }}>
           {extractedUpdates && extractedUpdates.length > 0 && (
             <div style={{ marginBottom: 16 }}>
@@ -266,9 +266,10 @@ function MeetingNotes({ notes, onSave, members, onAddTasks }) {
             </div>
           )}
           {extracted && extracted.length > 0 && (
-          <div style={{ fontSize: 11, color: COLORS.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12, fontFamily: "'DM Mono', monospace" }}>
-            🤖 Tareas nuevas ({extracted.length})
-          </div>
+            <div>
+            <div style={{ fontSize: 11, color: COLORS.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12, fontFamily: "'DM Mono', monospace" }}>
+              🤖 Tareas nuevas ({extracted.length})
+            </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
             {extracted.map((t, i) => (
               <div key={i} style={{ background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 6, padding: "10px 14px" }}>
@@ -283,6 +284,7 @@ function MeetingNotes({ notes, onSave, members, onAddTasks }) {
               </div>
             ))}
           </div>
+            </div>
           )}
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
             <Btn variant="ghost" style={{ fontSize: 11 }} onClick={() => { setExtracted(null); setExtractedUpdates([]); }}>Descartar</Btn>

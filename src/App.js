@@ -174,6 +174,7 @@ function MeetingNotes({ notes, onSave, members, onAddTasks }) {
   const [draft, setDraft] = useState(notes);
   const [extracting, setExtracting] = useState(false);
   const [extracted, setExtracted] = useState(null);
+  const [extractedUpdates, setExtractedUpdates] = useState([]);
   const [extractError, setExtractError] = useState("");
   const today = new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
 
@@ -184,16 +185,19 @@ function MeetingNotes({ notes, onSave, members, onAddTasks }) {
     setExtractError("");
     setExtracted(null);
     try {
+      const existingTasks = tasks.map(t => ({ id: t.id, title: t.title, person: t.person }));
       const response = await fetch("/api/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           notes: text,
-          members: members.join(", ")
+          members: members.join(", "),
+          existingTasks: JSON.stringify(existingTasks)
         })
       });
       const data = await response.json();
       setExtracted(data.tasks || []);
+      setExtractedUpdates(data.updates || []);
     } catch(e) {
       setExtractError("Error al extraer tareas. Inténtalo de nuevo.");
     }
@@ -202,8 +206,9 @@ function MeetingNotes({ notes, onSave, members, onAddTasks }) {
 
   function confirmTasks() {
     const valid = extracted.filter(t => t.title && t.person);
-    onAddTasks(valid);
+    onAddTasks(valid, extractedUpdates);
     setExtracted(null);
+    setExtractedUpdates([]);
   }
 
   return (
@@ -219,7 +224,7 @@ function MeetingNotes({ notes, onSave, members, onAddTasks }) {
               {extracting ? "⏳ Analizando..." : "🤖 Extraer tareas"}
             </Btn>
           )}
-          <Btn variant="ghost" style={{ fontSize: 11, padding: "6px 12px" }} onClick={() => { setEditing(!editing); setDraft(notes); setExtracted(null); }}>
+          <Btn variant="ghost" style={{ fontSize: 11, padding: "6px 12px" }} onClick={() => { setEditing(!editing); setDraft(notes); setExtracted(null); setExtractedUpdates([]); }}>
             {editing ? "Cancelar" : "✏️ Editar"}
           </Btn>
         </div>
@@ -245,10 +250,24 @@ function MeetingNotes({ notes, onSave, members, onAddTasks }) {
         <div style={{ marginTop: 12, fontSize: 12, color: COLORS.danger }}>{extractError}</div>
       )}
 
-      {extracted && extracted.length > 0 && (
+      {(extracted && extracted.length > 0 || extractedUpdates && extractedUpdates.length > 0) && (
         <div style={{ marginTop: 16, borderTop: `1px solid ${COLORS.border}`, paddingTop: 16 }}>
+          {extractedUpdates && extractedUpdates.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: COLORS.info, letterSpacing: 2, textTransform: "uppercase", marginBottom: 10, fontFamily: "'DM Mono', monospace" }}>
+                💬 Actualizaciones detectadas ({extractedUpdates.length})
+              </div>
+              {extractedUpdates.map((u, i) => (
+                <div key={i} style={{ background: COLORS.bg, border: `1px solid ${COLORS.info}33`, borderRadius: 6, padding: "10px 14px", marginBottom: 8, borderLeft: `3px solid ${COLORS.info}` }}>
+                  <div style={{ fontSize: 11, color: COLORS.info, marginBottom: 4, fontWeight: 600 }}>→ {u.taskTitle}</div>
+                  <div style={{ fontSize: 13, color: COLORS.text }}>{u.comment}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {extracted && extracted.length > 0 && (
           <div style={{ fontSize: 11, color: COLORS.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12, fontFamily: "'DM Mono', monospace" }}>
-            🤖 Tareas extraídas ({extracted.length})
+            🤖 Tareas nuevas ({extracted.length})
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
             {extracted.map((t, i) => (
@@ -264,15 +283,16 @@ function MeetingNotes({ notes, onSave, members, onAddTasks }) {
               </div>
             ))}
           </div>
-          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-            <Btn variant="ghost" style={{ fontSize: 11 }} onClick={() => setExtracted(null)}>Descartar</Btn>
-            <Btn onClick={confirmTasks}>✅ Añadir al hub</Btn>
+          )}
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+            <Btn variant="ghost" style={{ fontSize: 11 }} onClick={() => { setExtracted(null); setExtractedUpdates([]); }}>Descartar</Btn>
+            <Btn onClick={confirmTasks}>✅ Aplicar al hub</Btn>
           </div>
         </div>
       )}
 
-      {extracted && extracted.length === 0 && (
-        <div style={{ marginTop: 12, fontSize: 12, color: COLORS.muted }}>No se encontraron tareas accionables en las notas.</div>
+      {extracted && extracted.length === 0 && extractedUpdates && extractedUpdates.length === 0 && (
+        <div style={{ marginTop: 12, fontSize: 12, color: COLORS.muted }}>No se encontraron tareas ni actualizaciones en las notas.</div>
       )}
     </div>
   );
@@ -308,6 +328,30 @@ export default function TeamHub() {
   const [activeTab, setActiveTab] = useState("tareas");
 
   const todayKey = new Date().toISOString().slice(0, 10);
+  const [search, setSearch] = useState("");
+  const [activeGanttMonth, setActiveGanttMonth] = useState(new Date().toISOString().slice(0, 7));
+
+  function exportToExcel() {
+    const headers = ["Persona","Tarea","Estado","Prioridad","Deadline","Fecha Creación","Notas"];
+    const rows = tasks.map(t => [
+      t.person, t.title,
+      STATUS_CONFIG[t.status]?.label || t.status,
+      PRIORITY_CONFIG[t.priority]?.label || t.priority,
+      t.deadline || "",
+      t.createdAt || "",
+      t.notes || ""
+    ]);
+    const csvContent = [headers, ...rows]
+      .map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `team-hub-${todayKey}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   // Initial data
   const INITIAL_MEMBERS = ["Carlos Garces","Javier Rey","Román Torres","Juanjo Lozano","Alberto Bonilla","Francisco Nin","Albert Mellado","Jaume Guasch","Nacho (Kaizen)","Adriana Murillo"];
@@ -465,6 +509,12 @@ export default function TeamHub() {
   const filtered = tasks.filter(t => {
     if (filterPerson !== "todos" && t.person !== filterPerson) return false;
     if (filterStatus !== "todos" && t.status !== filterStatus) return false;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      if (!t.title.toLowerCase().includes(q) &&
+          !t.person.toLowerCase().includes(q) &&
+          !(t.notes||"").toLowerCase().includes(q)) return false;
+    }
     return true;
   });
 
@@ -496,6 +546,7 @@ export default function TeamHub() {
           <div style={{ fontSize: 20, fontWeight: 600 }}>Panel del equipo</div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <Btn variant="ghost" style={{ fontSize: 11 }} onClick={exportToExcel}>⬇️ Excel</Btn>
           <Btn variant="ghost" style={{ fontSize: 11 }} onClick={() => setModal("addMember")}>+ Persona</Btn>
           {members.length > 0 && <Btn style={{ fontSize: 11 }} onClick={() => setModal("addTask")}>+ Tarea</Btn>}
         </div>
@@ -522,14 +573,14 @@ export default function TeamHub() {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: 4, marginBottom: 20, borderBottom: `1px solid ${COLORS.border}`, paddingBottom: 0 }}>
-          {["tareas", "meeting", "equipo"].map(tab => (
+          {["tareas", "gantt", "meeting", "equipo"].map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)} style={{
               background: "transparent", border: "none", cursor: "pointer", padding: "10px 18px",
               fontFamily: "inherit", fontSize: 13, fontWeight: 500,
               color: activeTab === tab ? COLORS.accent : COLORS.muted,
               borderBottom: `2px solid ${activeTab === tab ? COLORS.accent : "transparent"}`,
               textTransform: "capitalize", transition: "all .15s", letterSpacing: 0.5
-            }}>{tab === "meeting" ? "Meeting notes" : tab.charAt(0).toUpperCase() + tab.slice(1)}</button>
+            }}>{tab === "meeting" ? "Meeting notes" : tab === "gantt" ? "Gantt" : tab.charAt(0).toUpperCase() + tab.slice(1)}</button>
           ))}
         </div>
 
@@ -544,6 +595,15 @@ export default function TeamHub() {
               </div>
             ) : (
               <>
+                {/* Buscador */}
+                <div style={{ marginBottom: 12 }}>
+                  <input
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    placeholder="🔍 Buscar tarea, persona o nota..."
+                    style={{ width: "100%", background: COLORS.surface, border: `1px solid ${search ? COLORS.accent : COLORS.border}`, borderRadius: 5, color: COLORS.text, padding: "9px 14px", fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                  />
+                </div>
                 {/* Filtros */}
                 <div style={{ display: "flex", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
                   <select value={filterPerson} onChange={e => setFilterPerson(e.target.value)}
@@ -600,6 +660,17 @@ export default function TeamHub() {
                             </div>
                             {task.notes && <div style={{ marginTop: 7, fontSize: 12, color: COLORS.muted, lineHeight: 1.5 }}>{task.notes}</div>}
                             {task.createdAt && <div style={{ marginTop: 5, fontSize: 10, color: COLORS.border, letterSpacing: 0.5 }}>Creada el {new Date(task.createdAt + "T00:00:00").toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" })}</div>}
+                            {task.history && task.history.length > 0 && (
+                              <div style={{ marginTop: 8, borderTop: `1px solid ${COLORS.border}`, paddingTop: 8 }}>
+                                <div style={{ fontSize: 10, color: COLORS.info, letterSpacing: 1, textTransform: "uppercase", marginBottom: 5 }}>Historial</div>
+                                {task.history.map((h, i) => (
+                                  <div key={i} style={{ fontSize: 11, color: COLORS.muted, marginBottom: 3, display: "flex", gap: 8 }}>
+                                    <span style={{ color: COLORS.accent, flexShrink: 0 }}>{h.date}</span>
+                                    <span>{h.comment}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                           <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                             <button onClick={() => { setEditTarget(task); setModal("editTask"); }} style={{ background: "transparent", border: "none", cursor: "pointer", color: COLORS.muted, fontSize: 13, padding: "2px 6px" }}>✏️</button>
@@ -622,18 +693,31 @@ export default function TeamHub() {
               notes={meetingNotes[todayKey] || ""}
               onSave={saveNote}
               members={members}
-              onAddTasks={(newTasks) => {
+              onAddTasks={(newTasks, updates) => {
+                const today = new Date().toISOString().slice(0, 10);
                 const withIds = newTasks.map((t, i) => ({
                   ...t,
                   id: Date.now() + i,
-                  createdAt: new Date().toISOString().slice(0, 10),
+                  createdAt: today,
                   person: t.person || members[0] || "",
                   status: t.status || "pendiente",
                   priority: t.priority || "media",
                   deadline: t.deadline || "",
                   notes: t.notes || "",
+                  history: []
                 }));
-                saveTasks([...tasks, ...withIds]);
+                let updated = [...tasks, ...withIds];
+                if (updates && updates.length > 0) {
+                  updated = updated.map(task => {
+                    const upd = updates.find(u => u.taskId === task.id);
+                    if (upd) {
+                      const entry = { date: today, comment: upd.comment };
+                      return { ...task, history: [...(task.history || []), entry] };
+                    }
+                    return task;
+                  });
+                }
+                saveTasks(updated);
               }}
             />
             {/* Historial */}
@@ -650,6 +734,68 @@ export default function TeamHub() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Tab: Gantt */}
+        {activeTab === "gantt" && (
+          <div>
+            <div style={{ fontSize: 11, color: COLORS.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 16 }}>
+              Tareas con deadline — ordenadas por fecha
+            </div>
+            {(() => {
+              const withDeadline = tasks
+                .filter(t => t.deadline && t.status !== "completado")
+                .sort((a, b) => a.deadline.localeCompare(b.deadline));
+              if (withDeadline.length === 0) return (
+                <div style={{ textAlign: "center", padding: 40, color: COLORS.muted, fontSize: 13 }}>
+                  No hay tareas con deadline. Añade fechas a tus tareas para verlas aquí.
+                </div>
+              );
+              // Group by month
+              const byMonth = {};
+              withDeadline.forEach(t => {
+                const month = t.deadline.slice(0, 7);
+                if (!byMonth[month]) byMonth[month] = [];
+                byMonth[month].push(t);
+              });
+              const today = new Date();
+              today.setHours(0,0,0,0);
+              return Object.entries(byMonth).map(([month, mTasks]) => (
+                <div key={month} style={{ marginBottom: 24 }}>
+                  <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: COLORS.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 10 }}>
+                    {new Date(month + "-01T00:00:00").toLocaleDateString("es-ES", { month: "long", year: "numeric" })}
+                  </div>
+                  {mTasks.map(task => {
+                    const days = daysUntil(task.deadline);
+                    const barColor = days <= 0 ? COLORS.danger : days <= 3 ? COLORS.danger : days <= 7 ? COLORS.accent : COLORS.success;
+                    const maxDays = 30;
+                    const barWidth = Math.max(4, Math.min(100, ((maxDays - Math.max(0, days)) / maxDays) * 100));
+                    return (
+                      <div key={task.id} style={{ marginBottom: 8, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "12px 16px", borderLeft: `3px solid ${barColor}` }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 3 }}>{task.title}</div>
+                            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                              <span style={{ fontSize: 11, color: COLORS.accent, fontWeight: 600 }}>{task.person}</span>
+                              <Tag label={STATUS_CONFIG[task.status]?.label} color={STATUS_CONFIG[task.status]?.color} />
+                              <Tag label={PRIORITY_CONFIG[task.priority]?.label} color={PRIORITY_CONFIG[task.priority]?.color} />
+                            </div>
+                          </div>
+                          <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 16 }}>
+                            <div style={{ fontSize: 12, color: barColor, fontWeight: 700 }}>{formatDate(task.deadline)}</div>
+                            <DeadlineBadge date={task.deadline} />
+                          </div>
+                        </div>
+                        <div style={{ height: 4, background: COLORS.border, borderRadius: 2, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${barWidth}%`, background: barColor, borderRadius: 2, transition: "width .3s" }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ));
+            })()}
           </div>
         )}
 

@@ -565,6 +565,11 @@ export default function TeamHub() {
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {filtered.sort((a, b) => {
+                      // Sort by deadline first (soonest first, no deadline last)
+                      const da = a.deadline ? new Date(a.deadline + "T00:00:00").getTime() : 99999999999999;
+                      const db = b.deadline ? new Date(b.deadline + "T00:00:00").getTime() : 99999999999999;
+                      if (da !== db) return da - db;
+                      // Then by priority
                       const pa = { alta: 0, media: 1, baja: 2 }[a.priority];
                       const pb = { alta: 0, media: 1, baja: 2 }[b.priority];
                       return pa - pb;
@@ -594,6 +599,7 @@ export default function TeamHub() {
                               )}
                             </div>
                             {task.notes && <div style={{ marginTop: 7, fontSize: 12, color: COLORS.muted, lineHeight: 1.5 }}>{task.notes}</div>}
+                            {task.createdAt && <div style={{ marginTop: 5, fontSize: 10, color: COLORS.border, letterSpacing: 0.5 }}>Creada el {new Date(task.createdAt + "T00:00:00").toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" })}</div>}
                           </div>
                           <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                             <button onClick={() => { setEditTarget(task); setModal("editTask"); }} style={{ background: "transparent", border: "none", cursor: "pointer", color: COLORS.muted, fontSize: 13, padding: "2px 6px" }}>✏️</button>

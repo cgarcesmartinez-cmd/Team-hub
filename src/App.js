@@ -184,26 +184,16 @@ function MeetingNotes({ notes, onSave, members, onAddTasks }) {
     setExtractError("");
     setExtracted(null);
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const response = await fetch("/api/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          system: `Eres un asistente de gestión de equipos. Extrae tareas accionables de las notas de reunión. 
-El equipo es: ${members.join(", ")}.
-Responde SOLO con un JSON válido, sin texto adicional, sin markdown, con este formato exacto:
-{"tasks":[{"person":"nombre exacto del miembro","title":"descripción corta de la tarea","priority":"alta|media|baja","status":"pendiente|en-curso|bloqueado","deadline":"YYYY-MM-DD o vacío","notes":"contexto adicional o vacío"}]}
-Si no puedes asignar a alguien del equipo deja person vacío. Extrae solo tareas concretas y accionables.`,
-          messages: [{ role: "user", content: `Notas del meeting:
-${text}` }]
+          notes: text,
+          members: members.join(", ")
         })
       });
       const data = await response.json();
-      const raw = data.content?.find(b => b.type === "text")?.text || "{}";
-      const clean = raw.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(clean);
-      setExtracted(parsed.tasks || []);
+      setExtracted(data.tasks || []);
     } catch(e) {
       setExtractError("Error al extraer tareas. Inténtalo de nuevo.");
     }

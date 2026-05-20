@@ -742,61 +742,141 @@ export default function TeamHub() {
         {/* Tab: Gantt */}
         {activeTab === "gantt" && (
           <div>
-            <div style={{ fontSize: 11, color: COLORS.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 16 }}>
-              Tareas con deadline — ordenadas por fecha
-            </div>
             {(() => {
+              const today = new Date();
+              today.setHours(0,0,0,0);
               const withDeadline = tasks
                 .filter(t => t.deadline && t.status !== "completado")
                 .sort((a, b) => a.deadline.localeCompare(b.deadline));
+
               if (withDeadline.length === 0) return (
                 <div style={{ textAlign: "center", padding: 40, color: COLORS.muted, fontSize: 13 }}>
                   No hay tareas con deadline. Añade fechas a tus tareas para verlas aquí.
                 </div>
               );
-              // Group by month
-              const byMonth = {};
+
+              // Get date range
+              const minDate = new Date(withDeadline[0].deadline + "T00:00:00");
+              const maxDate = new Date(withDeadline[withDeadline.length-1].deadline + "T00:00:00");
+              const startDate = new Date(Math.min(today.getTime(), minDate.getTime()));
+              startDate.setDate(1);
+              const endDate = new Date(maxDate);
+              endDate.setMonth(endDate.getMonth() + 1);
+              endDate.setDate(0);
+
+              const totalDays = Math.ceil((endDate - startDate) / 86400000) + 1;
+
+              // Generate months for header
+              const months = [];
+              let cur = new Date(startDate);
+              while (cur <= endDate) {
+                const monthStart = new Date(cur.getFullYear(), cur.getMonth(), 1);
+                const monthEnd = new Date(cur.getFullYear(), cur.getMonth() + 1, 0);
+                const clampStart = Math.max(monthStart, startDate);
+                const clampEnd = Math.min(monthEnd, endDate);
+                const days = Math.ceil((clampEnd - clampStart) / 86400000) + 1;
+                months.push({
+                  label: monthStart.toLocaleDateString("es-ES", { month: "short", year: "2-digit" }),
+                  days,
+                  isCurrentMonth: monthStart.getMonth() === today.getMonth() && monthStart.getFullYear() === today.getFullYear()
+                });
+                cur.setMonth(cur.getMonth() + 1);
+              }
+
+              const todayOffset = Math.ceil((today - startDate) / 86400000);
+              const todayPct = (todayOffset / totalDays) * 100;
+
+              function getPct(dateStr) {
+                const d = new Date(dateStr + "T00:00:00");
+                const offset = Math.ceil((d - startDate) / 86400000);
+                return Math.min(100, Math.max(0, (offset / totalDays) * 100));
+              }
+
+              // Group by person
+              const byPerson = {};
               withDeadline.forEach(t => {
-                const month = t.deadline.slice(0, 7);
-                if (!byMonth[month]) byMonth[month] = [];
-                byMonth[month].push(t);
+                if (!byPerson[t.person]) byPerson[t.person] = [];
+                byPerson[t.person].push(t);
               });
-              const today = new Date();
-              today.setHours(0,0,0,0);
-              return Object.entries(byMonth).map(([month, mTasks]) => (
-                <div key={month} style={{ marginBottom: 24 }}>
-                  <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: COLORS.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 10 }}>
-                    {new Date(month + "-01T00:00:00").toLocaleDateString("es-ES", { month: "long", year: "numeric" })}
-                  </div>
-                  {mTasks.map(task => {
-                    const days = daysUntil(task.deadline);
-                    const barColor = days <= 0 ? COLORS.danger : days <= 3 ? COLORS.danger : days <= 7 ? COLORS.accent : COLORS.success;
-                    const maxDays = 30;
-                    const barWidth = Math.max(4, Math.min(100, ((maxDays - Math.max(0, days)) / maxDays) * 100));
-                    return (
-                      <div key={task.id} style={{ marginBottom: 8, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "12px 16px", borderLeft: `3px solid ${barColor}` }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 3 }}>{task.title}</div>
-                            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                              <span style={{ fontSize: 11, color: COLORS.accent, fontWeight: 600 }}>{task.person}</span>
-                              <Tag label={STATUS_CONFIG[task.status]?.label} color={STATUS_CONFIG[task.status]?.color} />
-                              <Tag label={PRIORITY_CONFIG[task.priority]?.label} color={PRIORITY_CONFIG[task.priority]?.color} />
+
+              return (
+                <div style={{ overflowX: "auto" }}>
+                  <div style={{ minWidth: 600 }}>
+                    {/* Month header */}
+                    <div style={{ display: "flex", marginBottom: 2, marginLeft: 160 }}>
+                      {months.map((m, i) => (
+                        <div key={i} style={{
+                          flex: m.days, textAlign: "center", fontSize: 10,
+                          color: m.isCurrentMonth ? COLORS.accent : COLORS.muted,
+                          fontFamily: "'DM Mono', monospace", letterSpacing: 1,
+                          textTransform: "uppercase", fontWeight: m.isCurrentMonth ? 700 : 400,
+                          borderLeft: i > 0 ? `1px solid ${COLORS.border}` : "none",
+                          paddingBottom: 6
+                        }}>{m.label}</div>
+                      ))}
+                    </div>
+
+                    {/* Today line + tasks by person */}
+                    {Object.entries(byPerson).map(([person, pTasks]) => (
+                      <div key={person} style={{ marginBottom: 16 }}>
+                        <div style={{ fontSize: 11, color: COLORS.accent, fontWeight: 700, marginBottom: 6, letterSpacing: 0.5 }}>{person}</div>
+                        {pTasks.map(task => {
+                          const pct = getPct(task.deadline);
+                          const days = daysUntil(task.deadline);
+                          const barColor = days < 0 ? COLORS.danger : days <= 3 ? COLORS.danger : days <= 7 ? COLORS.accent : COLORS.success;
+                          // Bar starts from task creation date or start, ends at deadline
+                          const startPct = task.createdAt ? getPct(task.createdAt) : 0;
+                          const barWidth = Math.max(0.5, pct - startPct);
+                          return (
+                            <div key={task.id} style={{ display: "flex", alignItems: "center", marginBottom: 6, gap: 8 }}>
+                              <div style={{ width: 152, flexShrink: 0, fontSize: 11, color: COLORS.text, textAlign: "right", paddingRight: 8, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={task.title}>
+                                {task.title.length > 22 ? task.title.slice(0,22) + "…" : task.title}
+                              </div>
+                              <div style={{ flex: 1, position: "relative", height: 24, background: COLORS.surface, borderRadius: 4, border: `1px solid ${COLORS.border}` }}>
+                                {/* Today marker */}
+                                <div style={{ position: "absolute", left: `${todayPct}%`, top: 0, bottom: 0, width: 2, background: COLORS.accent, zIndex: 2, opacity: 0.8 }} />
+                                {/* Task bar */}
+                                <div style={{
+                                  position: "absolute",
+                                  left: `${startPct}%`,
+                                  width: `${barWidth}%`,
+                                  top: 4, bottom: 4,
+                                  background: barColor + "55",
+                                  border: `1px solid ${barColor}`,
+                                  borderRadius: 3,
+                                  display: "flex", alignItems: "center", justifyContent: "flex-end",
+                                  paddingRight: 4, overflow: "hidden"
+                                }}>
+                                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: barColor, flexShrink: 0 }} />
+                                </div>
+                              </div>
+                              <div style={{ width: 48, flexShrink: 0, fontSize: 10, color: barColor, fontWeight: 700, textAlign: "left" }}>
+                                {formatDate(task.deadline)}
+                              </div>
                             </div>
-                          </div>
-                          <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 16 }}>
-                            <div style={{ fontSize: 12, color: barColor, fontWeight: 700 }}>{formatDate(task.deadline)}</div>
-                            <DeadlineBadge date={task.deadline} />
-                          </div>
-                        </div>
-                        <div style={{ height: 4, background: COLORS.border, borderRadius: 2, overflow: "hidden" }}>
-                          <div style={{ height: "100%", width: `${barWidth}%`, background: barColor, borderRadius: 2, transition: "width .3s" }} />
-                        </div>
+                          );
+                        })}
                       </div>
-                    );
-                  })}
+                    ))}
+
+                    {/* Legend */}
+                    <div style={{ display: "flex", gap: 16, marginTop: 16, paddingTop: 12, borderTop: `1px solid ${COLORS.border}`, flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: COLORS.muted }}>
+                        <div style={{ width: 16, height: 2, background: COLORS.accent }} /> Hoy
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: COLORS.muted }}>
+                        <div style={{ width: 12, height: 12, borderRadius: 2, background: COLORS.success + "55", border: `1px solid ${COLORS.success}` }} /> +7 días
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: COLORS.muted }}>
+                        <div style={{ width: 12, height: 12, borderRadius: 2, background: COLORS.accent + "55", border: `1px solid ${COLORS.accent}` }} /> ≤7 días
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: COLORS.muted }}>
+                        <div style={{ width: 12, height: 12, borderRadius: 2, background: COLORS.danger + "55", border: `1px solid ${COLORS.danger}` }} /> Urgente/Vencida
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              ));
+              );
             })()}
           </div>
         )}

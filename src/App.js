@@ -666,9 +666,15 @@ export default function TeamHub() {
                               <div style={{ marginTop: 8, borderTop: `1px solid ${COLORS.border}`, paddingTop: 8 }}>
                                 <div style={{ fontSize: 10, color: COLORS.info, letterSpacing: 1, textTransform: "uppercase", marginBottom: 5 }}>Historial</div>
                                 {task.history.map((h, i) => (
-                                  <div key={i} style={{ fontSize: 11, color: COLORS.muted, marginBottom: 3, display: "flex", gap: 8 }}>
+                                  <div key={i} style={{ fontSize: 11, color: COLORS.muted, marginBottom: 4, display: "flex", gap: 8, alignItems: "flex-start" }}>
                                     <span style={{ color: COLORS.accent, flexShrink: 0 }}>{h.date}</span>
-                                    <span>{h.comment}</span>
+                                    <span style={{ flex: 1 }}>{h.comment}</span>
+                                    <button onClick={() => {
+                                      const updated = tasks.map(t => t.id === task.id
+                                        ? { ...t, history: t.history.filter((_, hi) => hi !== i) }
+                                        : t);
+                                      saveTasks(updated);
+                                    }} style={{ background: "transparent", border: "none", cursor: "pointer", color: COLORS.danger + "88", fontSize: 11, padding: "0 4px", flexShrink: 0 }}>✕</button>
                                   </div>
                                 ))}
                               </div>

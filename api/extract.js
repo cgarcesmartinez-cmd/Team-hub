@@ -8,6 +8,28 @@ export default async function handler(req, res) {
     const { notes, members, existingTasks } = req.body || {};
     if (!notes) return res.status(400).json({ tasks: [], updates: [], error: "No notes provided" });
 
+    let parsedTasks = [];
+    try { parsedTasks = JSON.parse(existingTasks || "[]"); } catch(e) {}
+
+    // Score tasks by relevance to notes
+    const notesWords = notes.toLowerCase().split(/\s+/);
+    const relevantTasks = parsedTasks
+      .map(t => {
+        const titleWords = t.title.toLowerCase().split(/\s+/);
+        const personWords = (t.person || "").toLowerCase().split(/\s+/);
+        let score = 0;
+        notesWords.forEach(w => {
+          if (w.length > 3) {
+            if (titleWords.some(tw => tw.includes(w) || w.includes(tw))) score += 2;
+            if (personWords.some(pw => pw.includes(w) || w.includes(pw))) score += 1;
+          }
+        });
+        return { ...t, score };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 15)
+      .map(({ score, ...t }) => t);
+
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -18,12 +40,27 @@ export default async function handler(req, res) {
         model: "llama-3.3-70b-versatile",
         messages: [{
           role: "system",
-          content: `Eres un asistente experto en gestión de equipos. Analiza notas de reunión y: 1. Extrae TAREAS NUEVAS que no existen aún. 2. Detecta COMENTARIOS o ACTUALIZACIONES sobre tareas ya existentes. El equipo es: ${members || ""}. Tareas existentes: ${existingTasks || "[]"}. INSTRUCCIONES: Si las notas mencionan algo relacionado con una tarea existente añádelo como actualización con el taskId correcto. Si es información nueva créala como tarea nueva. Las fechas como "22/05" conviértelas a "2026-05-22". Responde ÚNICAMENTE con JSON válido sin markdown. Formato: {"tasks":[{"person":"nombre o vacío","title":"tarea","priority":"alta|media|baja","status":"pendiente","deadline":"YYYY-MM-DD o vacío","notes":"contexto o vacío"}],"updates":[{"taskId":123,"taskTitle":"título tarea existente","comment":"comentario"}]}`
+          content: `Eres un asistente experto en gestión de equipos. Analiza notas de reunión y:
+1. Extrae TAREAS NUEVAS que no existen.
+2. Detecta ACTUALIZACIONES o comentarios sobre tareas existentes.
+
+Equipo: ${members || ""}.
+
+Tareas existentes más relevantes:
+${relevantTasks.map(t => `ID:${t.id} | ${t.person} | ${t.title}`).join("\n")}
+
+REGLAS:
+- Si las notas mencionan algo relacionado con una tarea existente aunque sea con palabras distintas, crea una actualización con el taskId correcto.
+- Si es información completamente nueva, crea una tarea nueva.
+- Fechas como "22/05" conviértelas a "2026-05-22".
+- Responde SOLO con JSON válido sin markdown ni explicaciones.
+
+Formato exacto: {"tasks":[{"person":"","title":"","priority":"alta|media|baja","status":"pendiente","deadline":"","notes":""}],"updates":[{"taskId":123,"taskTitle":"título de la tarea","comment":"comentario"}]}`
         }, {
           role: "user",
-          content: `Analiza estas notas:\n\n${notes}`
+          content: notes
         }],
-        max_tokens: 1500,
+        max_tokens: 1000,
         temperature: 0.1
       })
     });

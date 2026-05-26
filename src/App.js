@@ -334,17 +334,31 @@ export default function TeamHub() {
   const [activeGanttMonth, setActiveGanttMonth] = useState(new Date().toISOString().slice(0, 7));
 
   function exportToExcel() {
-    const headers = ["Persona","Tarea","Estado","Prioridad","Deadline","Fecha Creación","Notas"];
-    const rows = tasks.map(t => [
-      t.person, t.title,
-      STATUS_CONFIG[t.status]?.label || t.status,
-      PRIORITY_CONFIG[t.priority]?.label || t.priority,
-      t.deadline || "",
-      t.createdAt || "",
-      t.notes || ""
-    ]);
+    const today = new Date().toLocaleDateString("es-ES");
+    const headers = ["PERSONA","TAREA","ESTADO","PRIORIDAD","DEADLINE","DÍAS RESTANTES","FECHA CREACIÓN","NOTAS","HISTORIAL"];
+    const rows = tasks
+      .sort((a,b) => {
+        const da = a.deadline ? new Date(a.deadline).getTime() : 99999999999;
+        const db = b.deadline ? new Date(b.deadline).getTime() : 99999999999;
+        return da - db;
+      })
+      .map(t => {
+        const days = t.deadline ? daysUntil(t.deadline) : "";
+        const history = (t.history||[]).map(h => `${h.date}: ${h.comment}`).join(" | ");
+        return [
+          t.person,
+          t.title,
+          STATUS_CONFIG[t.status]?.label || t.status,
+          PRIORITY_CONFIG[t.priority]?.label || t.priority,
+          t.deadline ? new Date(t.deadline + "T00:00:00").toLocaleDateString("es-ES") : "Sin fecha",
+          days !== "" ? (days < 0 ? `Vencida hace ${Math.abs(days)}d` : days === 0 ? "HOY" : `${days} días`) : "",
+          t.createdAt ? new Date(t.createdAt + "T00:00:00").toLocaleDateString("es-ES") : "",
+          t.notes || "",
+          history
+        ];
+      });
     const csvContent = [headers, ...rows]
-      .map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(","))
+      .map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(";"))
       .join("\n");
     const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -509,6 +523,7 @@ export default function TeamHub() {
   }
 
   const filtered = tasks.filter(t => {
+    if (t.status === "completado" && filterStatus !== "completado") return false;
     if (filterPerson !== "todos" && t.person !== filterPerson) return false;
     if (filterStatus !== "todos" && t.status !== filterStatus) return false;
     if (search.trim()) {
@@ -615,8 +630,8 @@ export default function TeamHub() {
                   </select>
                   <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
                     style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 5, color: COLORS.text, padding: "7px 12px", fontSize: 12, outline: "none", fontFamily: "inherit" }}>
-                    <option value="todos">Todos los estados</option>
-                    {Object.entries(STATUS_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                    <option value="todos">Activas ({tasks.filter(t => t.status !== "completado").length})</option>
+                    {Object.entries(STATUS_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label} ({tasks.filter(t => t.status === k).length})</option>)}
                   </select>
                 </div>
 
@@ -721,7 +736,8 @@ export default function TeamHub() {
                     const upd = updates.find(u => u.taskId === task.id);
                     if (upd) {
                       const entry = { date: today, comment: upd.comment };
-                      return { ...task, history: [...(task.history || []), entry] };
+                      const newStatus = upd.newStatus || task.status;
+                      return { ...task, status: newStatus, history: [...(task.history || []), entry] };
                     }
                     return task;
                   });
@@ -903,14 +919,23 @@ export default function TeamHub() {
                   const mtasks = tasks.filter(t => t.person === m);
                   const open = mtasks.filter(t => t.status !== "completado").length;
                   const blocked = mtasks.filter(t => t.status === "bloqueado").length;
+                  const completed = mtasks.filter(t => t.status === "completado").length;
                   return (
                     <div key={m} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 18 }}>
                       <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 10 }}>{m}</div>
                       <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 4 }}>
-                        <span style={{ color: COLORS.text, fontWeight: 600 }}>{open}</span> tareas abiertas
+                        <span style={{ color: COLORS.text, fontWeight: 600 }}>{open}</span> tareas activas
                       </div>
-                      {blocked > 0 && (
-                        <div style={{ fontSize: 12, color: COLORS.danger }}>⚠️ {blocked} bloqueada{blocked > 1 ? "s" : ""}</div>
+                      {blocked > 0 && <div style={{ fontSize: 12, color: COLORS.danger, marginBottom: 4 }}>⚠️ {blocked} bloqueada{blocked > 1 ? "s" : ""}</div>}
+                      {completed > 0 && (
+                        <div style={{ fontSize: 12, color: COLORS.success }}>✅ {completed} completada{completed > 1 ? "s" : ""}</div>
+                      )}
+                      {mtasks.filter(t => t.status === "completado").length > 0 && (
+                        <div style={{ marginTop: 8 }}>
+                          {mtasks.filter(t => t.status === "completado").map(t => (
+                            <div key={t.id} style={{ fontSize: 11, color: COLORS.muted, padding: "3px 0", textDecoration: "line-through" }}>{t.title}</div>
+                          ))}
+                        </div>
                       )}
                       <button onClick={() => {
                         saveMembers(members.filter(x => x !== m));

@@ -11,7 +11,6 @@ export default async function handler(req, res) {
     let parsedTasks = [];
     try { parsedTasks = JSON.parse(existingTasks || "[]"); } catch(e) {}
 
-    // Score tasks by relevance to notes
     const notesWords = notes.toLowerCase().split(/\s+/);
     const relevantTasks = parsedTasks
       .map(t => {
@@ -42,7 +41,7 @@ export default async function handler(req, res) {
           role: "system",
           content: `Eres un asistente experto en gestión de equipos. Analiza notas de reunión y:
 1. Extrae TAREAS NUEVAS que no existen.
-2. Detecta ACTUALIZACIONES o comentarios sobre tareas existentes.
+2. Detecta ACTUALIZACIONES sobre tareas existentes, incluyendo cambios de estado.
 
 Equipo: ${members || ""}.
 
@@ -50,12 +49,15 @@ Tareas existentes más relevantes:
 ${relevantTasks.map(t => `ID:${t.id} | ${t.person} | ${t.title}`).join("\n")}
 
 REGLAS:
-- Si las notas mencionan algo relacionado con una tarea existente aunque sea con palabras distintas, crea una actualización con el taskId correcto.
-- Si es información completamente nueva, crea una tarea nueva.
-- Fechas como "22/05" conviértelas a "2026-05-22".
-- Responde SOLO con JSON válido sin markdown ni explicaciones.
+- Si mencionan que una tarea está completada, terminada, hecha, finalizada → newStatus: "completado"
+- Si mencionan que está en curso, arrancada, iniciada → newStatus: "en-curso"
+- Si mencionan que está bloqueada, parada, pendiente de algo → newStatus: "bloqueado"
+- Si no hay cambio de estado → omite newStatus
+- Si es información nueva → crea tarea nueva
+- Fechas como "22/05" → "2026-05-22"
+- Responde SOLO con JSON válido sin markdown.
 
-Formato exacto: {"tasks":[{"person":"","title":"","priority":"alta|media|baja","status":"pendiente","deadline":"","notes":""}],"updates":[{"taskId":123,"taskTitle":"título de la tarea","comment":"comentario"}]}`
+Formato: {"tasks":[{"person":"","title":"","priority":"alta|media|baja","status":"pendiente","deadline":"","notes":""}],"updates":[{"taskId":123,"taskTitle":"título","comment":"comentario","newStatus":"completado|en-curso|bloqueado|pendiente"}]}`
         }, {
           role: "user",
           content: notes

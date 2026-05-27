@@ -29,8 +29,9 @@ export default async function handler(req, res) {
       .slice(0, 15)
       .map(({ score, ...t }) => t);
 
+    // Detect status keywords directly in notes for post-processing
     const notesLower = notes.toLowerCase();
-    const isCompleted = notesLower.includes("completada") || notesLower.includes("terminada") ||
+    const isCompleted = notesLower.includes("completada") || notesLower.includes("terminada") || 
                         notesLower.includes("finalizada") || notesLower.includes("hecha") ||
                         notesLower.includes("completado") || notesLower.includes("terminado");
 
@@ -49,19 +50,21 @@ export default async function handler(req, res) {
 Equipo: ${members || ""}.
 
 Tareas existentes más relevantes:
-${relevantTasks.map(t => `${t.id} | ${t.person} | ${t.title}`).join("\n")}
+${relevantTasks.map(t => `taskId:${t.id} | ${t.person} | ${t.title}`).join("\n")}
 
 REGLAS ESTRICTAS:
-1. El taskId debe ser el número exacto del inicio de cada línea de tareas existentes.
-2. Si el comentario contiene "terminada", "completada", "finalizada", "hecha", "terminado", "completado" → SIEMPRE pon newStatus: "completado"
-3. Si contiene "en curso", "arrancada", "iniciada", "trabajando" → newStatus: "en-curso"
-4. Si contiene "bloqueada", "parada", "pendiente de", "esperando" → newStatus: "bloqueado"
-5. SIEMPRE incluye newStatus en cada update, nunca lo omitas
-6. Si es información nueva → crea tarea nueva
-7. Fechas como "29/05" → "2026-05-29"
-8. Responde SOLO con JSON válido sin markdown ni prefijos
+1. La persona mencionada en las notas DEBE coincidir con la persona de la tarea existente. No vincules actualizaciones a tareas de otras personas.
+2. Elige la tarea más específica que coincida. Si hay varias tareas de la misma persona, elige la que tenga más palabras clave en común con las notas.
+3. Si el comentario contiene "terminada", "completada", "finalizada", "hecha", "terminado", "completado" → SIEMPRE pon newStatus: "completado"
+4. Si contiene "bloqueado", "bloqueada", "no puede", "esperando respuesta", "parado" → newStatus: "bloqueado"
+5. Si contiene "en curso", "arrancada", "iniciada", "trabajando", "avanzando" → newStatus: "en-curso"
+6. SIEMPRE incluye newStatus en cada update
+7. Si no encuentras tarea existente que coincida claramente → crea tarea nueva
+8. Fechas como "29/05" → "2026-05-29"
+9. Responde SOLO con JSON válido sin markdown
 
-Formato EXACTO: {"tasks":[{"person":"","title":"","priority":"alta|media|baja","status":"pendiente","deadline":"","notes":""}],"updates":[{"taskId":14,"taskTitle":"título exacto","comment":"comentario","newStatus":"completado"}]}`
+Formato EXACTO obligatorio:
+{"tasks":[{"person":"","title":"","priority":"alta|media|baja","status":"pendiente","deadline":"","notes":""}],"updates":[{"taskId":123,"taskTitle":"título exacto","comment":"comentario","newStatus":"completado"}]}`
         }, {
           role: "user",
           content: notes
@@ -79,13 +82,16 @@ Formato EXACTO: {"tasks":[{"person":"","title":"","priority":"alta|media|baja","
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content || '{"tasks":[],"updates":[]}';
     const clean = text.replace(/```json|```/g, "").trim();
-
+    
     try {
       const parsed = JSON.parse(clean);
+      // Post-process: if notes mention completion words and update has no newStatus, force it
       const updates = (parsed.updates || []).map(u => {
+        // Clean taskId - remove any "ID:" or "taskId:" prefix and convert to number
         let cleanId = String(u.taskId || "").replace(/^(ID:|taskId:)/i, "").trim();
         const numId = parseInt(cleanId);
         const taskId = !isNaN(numId) ? numId : cleanId;
+        // Force newStatus if completion keywords detected
         const newStatus = u.newStatus || (isCompleted ? "completado" : undefined);
         return { ...u, taskId, newStatus };
       });

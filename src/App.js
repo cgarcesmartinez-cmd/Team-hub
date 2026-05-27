@@ -929,23 +929,39 @@ export default function TeamHub() {
                 const today = new Date().toISOString().slice(0, 10);
                 // Detect duplicate tasks
                 const duplicates = [];
+                // Common generic words that shouldn't trigger duplicate detection alone
+                const genericWords = new Set(["layout","marquesina","tarea","proyecto","debe","hacer","para","pedir","oferta","revisar","confirmar","solicitar","gestionar","preparar","enviar","actualizar","coordinar","seguimiento","pendiente"]);
+                
                 const validNewTasks = newTasks.filter(nt => {
                   const ntTitle = (nt.title || "").toLowerCase();
-                  const ntWords = ntTitle.split(" ").filter(w => w.length > 3);
-                  if (ntWords.length === 0) return true;
+                  const ntPerson = (nt.person || "").toLowerCase();
+                  const ntWords = ntTitle.split(" ").filter(w => w.length > 4 && !genericWords.has(w));
+                  if (ntWords.length < 2) return true;
                   const isDup = tasks.some(existing => {
+                    // Person must match for duplicate detection
+                    const exPerson = existing.person.toLowerCase();
+                    const personMatch = ntPerson && exPerson && 
+                      (ntPerson.split(" ").some(p => p.length > 3 && exPerson.includes(p)) ||
+                       exPerson.split(" ").some(p => p.length > 3 && ntPerson.includes(p)));
+                    if (!personMatch) return false;
                     const exTitle = existing.title.toLowerCase();
-                    const exWords = exTitle.split(" ").filter(w => w.length > 3);
+                    const exWords = exTitle.split(" ").filter(w => w.length > 4 && !genericWords.has(w));
+                    if (exWords.length < 2) return false;
                     const forwardMatches = ntWords.filter(w => exTitle.includes(w));
                     const backwardMatches = exWords.filter(w => ntTitle.includes(w));
-                    return forwardMatches.length >= Math.ceil(ntWords.length * 0.5) ||
-                           backwardMatches.length >= Math.ceil(exWords.length * 0.5);
+                    return forwardMatches.length >= Math.ceil(ntWords.length * 0.7) ||
+                           backwardMatches.length >= Math.ceil(exWords.length * 0.7);
                   });
                   if (isDup) {
                     const existingMatch = tasks.find(existing => {
+                      const exPerson = existing.person.toLowerCase();
+                      const personMatch = ntPerson && exPerson &&
+                        ntPerson.split(" ").some(p => p.length > 3 && exPerson.includes(p));
+                      if (!personMatch) return false;
                       const exTitle = existing.title.toLowerCase();
+                      const exWords = exTitle.split(" ").filter(w => w.length > 4 && !genericWords.has(w));
                       const forwardMatches = ntWords.filter(w => exTitle.includes(w));
-                      return forwardMatches.length >= Math.ceil(ntWords.length * 0.5);
+                      return exWords.length >= 2 && forwardMatches.length >= Math.ceil(ntWords.length * 0.7);
                     });
                     duplicates.push({ new: nt.title, existing: existingMatch?.title || "?" });
                   }

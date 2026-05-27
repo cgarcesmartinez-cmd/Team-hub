@@ -370,7 +370,7 @@ export default function TeamHub() {
   }
 
   // Initial data
-  const INITIAL_MEMBERS = ["Carlos Garces","Javier Rey","Román Torres","Juanjo Lozano","Alberto Bonilla","Francisco Nin","Albert Mellado","Jaume Guasch","Nacho (Kaizen)","Adriana Murillo"];
+  const INITIAL_MEMBERS = ["Carlos Garces","Javier Rey","Christian Chavez","Román Torres","Juanjo Lozano","Alberto Bonilla","Francisco Nin","Albert Mellado","Jaume Guasch","Nacho (Kaizen)","Adriana Murillo"];
   const INITIAL_TASKS = [
     {id:1,person:"Carlos Garces",title:"Pedir oferta a Mecalux para proyecto estanterías/GBracks",priority:"media",status:"pendiente",deadline:"",notes:"",createdAt:"2026-05-20"},
     {id:2,person:"Carlos Garces",title:"Identificar piezas críticas de Miguel (correo GAE) - evaluar impacto headcount y proceso",priority:"alta",status:"pendiente",deadline:"",notes:"",createdAt:"2026-05-20"},
@@ -733,7 +733,7 @@ export default function TeamHub() {
                 let updated = [...tasks, ...withIds];
                 if (updates && updates.length > 0) {
                   updated = updated.map(task => {
-                    const upd = updates.find(u => u.taskId === task.id);
+                    const upd = updates.find(u => String(u.taskId) === String(task.id));
                     if (upd) {
                       const entry = { date: today, comment: upd.comment };
                       const newStatus = upd.newStatus || task.status;
@@ -914,38 +914,140 @@ export default function TeamHub() {
                 <Btn onClick={() => setModal("addMember")}>+ Añadir persona</Btn>
               </div>
             ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
-                {members.map(m => {
-                  const mtasks = tasks.filter(t => t.person === m);
-                  const open = mtasks.filter(t => t.status !== "completado").length;
-                  const blocked = mtasks.filter(t => t.status === "bloqueado").length;
-                  const completed = mtasks.filter(t => t.status === "completado").length;
+              <div>
+                {/* Org Chart */}
+                {(() => {
+                  const ORG = [
+                    {
+                      group: "Dirección",
+                      color: COLORS.accent,
+                      members: [
+                        { name: "Carlos Garces", role: "Jefe MHE", area: "Material Handling Engineering", scope: "Coordinación interdepartamental · Gestión de proyectos · Door-to-Door" }
+                      ]
+                    },
+                    {
+                      group: "Línea M0 — 6 JPH",
+                      color: COLORS.info,
+                      members: [
+                        { name: "Juanjo Lozano", role: "Ingeniero MHE", area: "M0 completa", scope: "Procesos · Facilities · Layouts · Medios" }
+                      ]
+                    },
+                    {
+                      group: "Línea M1 — 20 JPH",
+                      color: "#a78bfa",
+                      members: [
+                        { name: "Javier Rey", role: "Ingeniero MHE", area: "Trim & Chassis M1", scope: "Procesos · Layouts · WebPicking · P2L · Kitting · S700" },
+                        { name: "Christian Chavez", role: "Ingeniero MHE", area: "Trim & Chassis M1", scope: "Procesos · Layouts · Soporte S400/S700" },
+                        { name: "Román Torres", role: "Ingeniero MHE", area: "Soldadura & Pintura M1", scope: "STOM · RD1215 · Medios · Retornables · S400 Premium" }
+                      ]
+                    },
+                    {
+                      group: "Métodos & Tiempos",
+                      color: COLORS.success,
+                      members: [
+                        { name: "Albert Mellado", role: "MTM", area: "Ambas líneas", scope: "Rutas de suministro · Tiempos operativas · Equilibrados · Sinergias" },
+                        { name: "Jaume Guasch", role: "MTM", area: "Ambas líneas", scope: "Rutas de suministro · Tiempos operativas · Equilibrados · Devaning" }
+                      ]
+                    },
+                    {
+                      group: "Keymans — Soporte Ambas Líneas",
+                      color: "#f97316",
+                      members: [
+                        { name: "Alberto Bonilla", role: "Keyman", area: "M0 + M1", scope: "Nuevos modelos · Decanting · Etiquetas · Cambios de diseño · Descargas" },
+                        { name: "Francisco Nin", role: "Keyman", area: "M0 + M1", scope: "Nuevos modelos · Decanting · Etiquetas · Cambios de diseño · Descargas" }
+                      ]
+                    },
+                    {
+                      group: "Sistemas & Data",
+                      color: "#ec4899",
+                      members: [
+                        { name: "Adriana Murillo", role: "Data Engineer", area: "Compartida", scope: "SGA · Master Data · Implantación sistemas · LES · Data maestros" }
+                      ]
+                    },
+                    {
+                      group: "Kaizen",
+                      color: COLORS.accentDim,
+                      members: [
+                        { name: "Nacho (Kaizen)", role: "Líder Kaizen", area: "Ambas líneas", scope: "Mejora continua · Implantación física layouts · Medios · Serigrafiado" }
+                      ]
+                    }
+                  ];
+
+                  const [expandedMember, setExpandedMember] = React.useState(null);
+
                   return (
-                    <div key={m} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 18 }}>
-                      <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 10 }}>{m}</div>
-                      <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 4 }}>
-                        <span style={{ color: COLORS.text, fontWeight: 600 }}>{open}</span> tareas activas
-                      </div>
-                      {blocked > 0 && <div style={{ fontSize: 12, color: COLORS.danger, marginBottom: 4 }}>⚠️ {blocked} bloqueada{blocked > 1 ? "s" : ""}</div>}
-                      {completed > 0 && (
-                        <div style={{ fontSize: 12, color: COLORS.success }}>✅ {completed} completada{completed > 1 ? "s" : ""}</div>
-                      )}
-                      {mtasks.filter(t => t.status === "completado").length > 0 && (
-                        <div style={{ marginTop: 8 }}>
-                          {mtasks.filter(t => t.status === "completado").map(t => (
-                            <div key={t.id} style={{ fontSize: 11, color: COLORS.muted, padding: "3px 0", textDecoration: "line-through" }}>{t.title}</div>
-                          ))}
+                    <div>
+                      {ORG.map((group, gi) => (
+                        <div key={gi} style={{ marginBottom: 24 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                            <div style={{ width: 3, height: 20, background: group.color, borderRadius: 2 }} />
+                            <div style={{ fontSize: 11, fontFamily: "'DM Mono', monospace", color: group.color, letterSpacing: 2, textTransform: "uppercase", fontWeight: 700 }}>{group.group}</div>
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
+                            {group.members.map(m => {
+                              const mtasks = tasks.filter(t => t.person === m.name);
+                              const open = mtasks.filter(t => t.status !== "completado").length;
+                              const blocked = mtasks.filter(t => t.status === "bloqueado").length;
+                              const completed = mtasks.filter(t => t.status === "completado").length;
+                              const isExpanded = expandedMember === m.name;
+                              const isMember = members.includes(m.name);
+                              return (
+                                <div key={m.name} style={{
+                                  background: COLORS.surface,
+                                  border: `1px solid ${isExpanded ? group.color : COLORS.border}`,
+                                  borderRadius: 8, padding: 16,
+                                  borderLeft: `3px solid ${group.color}`,
+                                  opacity: isMember ? 1 : 0.5
+                                }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                                    <div>
+                                      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{m.name}</div>
+                                      <div style={{ fontSize: 11, color: group.color, fontWeight: 600, marginBottom: 2 }}>{m.role}</div>
+                                      <div style={{ fontSize: 11, color: COLORS.muted }}>{m.area}</div>
+                                    </div>
+                                    <button onClick={() => setExpandedMember(isExpanded ? null : m.name)}
+                                      style={{ background: "transparent", border: "none", cursor: "pointer", color: COLORS.muted, fontSize: 14, padding: 0 }}>
+                                      {isExpanded ? "▲" : "▼"}
+                                    </button>
+                                  </div>
+
+                                  {isExpanded && (
+                                    <div style={{ marginTop: 12, borderTop: `1px solid ${COLORS.border}`, paddingTop: 12 }}>
+                                      <div style={{ fontSize: 11, color: COLORS.muted, lineHeight: 1.7, marginBottom: 10 }}>{m.scope}</div>
+                                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                                        <span style={{ fontSize: 11, color: COLORS.text }}><strong>{open}</strong> activas</span>
+                                        {blocked > 0 && <span style={{ fontSize: 11, color: COLORS.danger }}>⚠️ {blocked} bloqueada{blocked > 1 ? "s" : ""}</span>}
+                                        {completed > 0 && <span style={{ fontSize: 11, color: COLORS.success }}>✅ {completed} completada{completed > 1 ? "s" : ""}</span>}
+                                      </div>
+                                      {mtasks.filter(t => t.status !== "completado").slice(0, 5).map(t => (
+                                        <div key={t.id} style={{ fontSize: 11, color: COLORS.muted, padding: "3px 0", borderTop: `1px solid ${COLORS.border}33`, display: "flex", gap: 6 }}>
+                                          <span style={{ color: STATUS_CONFIG[t.status]?.color, flexShrink: 0 }}>●</span>
+                                          <span>{t.title.length > 50 ? t.title.slice(0,50) + "…" : t.title}</span>
+                                        </div>
+                                      ))}
+                                      {open > 5 && <div style={{ fontSize: 10, color: COLORS.muted, marginTop: 4 }}>+{open-5} más...</div>}
+                                      {completed > 0 && (
+                                        <div style={{ marginTop: 8 }}>
+                                          <div style={{ fontSize: 10, color: COLORS.success, letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 }}>Completadas</div>
+                                          {mtasks.filter(t => t.status === "completado").map(t => (
+                                            <div key={t.id} style={{ fontSize: 11, color: COLORS.muted, padding: "2px 0", textDecoration: "line-through" }}>{t.title.length > 50 ? t.title.slice(0,50) + "…" : t.title}</div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
-                      )}
-                      <button onClick={() => {
-                        saveMembers(members.filter(x => x !== m));
-                        saveTasks(tasks.filter(t => t.person !== m));
-                      }} style={{ marginTop: 14, background: "transparent", border: "none", cursor: "pointer", color: COLORS.muted, fontSize: 11, padding: 0, fontFamily: "inherit" }}>
-                        Eliminar
-                      </button>
+                      ))}
+                      <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${COLORS.border}` }}>
+                        <Btn variant="ghost" style={{ fontSize: 11 }} onClick={() => setModal("addMember")}>+ Añadir persona</Btn>
+                      </div>
                     </div>
                   );
-                })}
+                })()}
               </div>
             )}
           </div>

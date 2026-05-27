@@ -1018,14 +1018,23 @@ export default function TeamHub() {
                       return commentWords.length >= 3 && commentMatches.length >= Math.ceil(commentWords.length * 0.5);
                     });
                     if (upd) {
+                      // Check if comment is basically the same as the task title (not a real update)
+                      const commentLow = upd.comment.toLowerCase();
+                      const titleLow = task.title.toLowerCase();
+                      const commentWords = commentLow.split(" ").filter(w => w.length > 3);
+                      const titleWords = titleLow.split(" ").filter(w => w.length > 3);
+                      const titleInComment = titleWords.filter(w => commentLow.includes(w));
+                      const isSameAsTitleDup = titleWords.length > 0 && titleInComment.length >= Math.ceil(titleWords.length * 0.7);
+                      
                       // Check if comment already exists in history
                       const alreadyInHistory = (task.history || []).some(h => {
                         const hWords = h.comment.toLowerCase().split(" ").filter(w => w.length > 3);
-                        const uWords = upd.comment.toLowerCase().split(" ").filter(w => w.length > 3);
+                        const uWords = commentWords;
                         const matches = hWords.filter(w => uWords.includes(w));
                         return hWords.length > 0 && matches.length >= Math.ceil(hWords.length * 0.6);
                       });
-                      if (alreadyInHistory) {
+
+                      if (isSameAsTitleDup || alreadyInHistory) {
                         skippedUpdates.push({ task: task.title, comment: upd.comment });
                         return task;
                       }

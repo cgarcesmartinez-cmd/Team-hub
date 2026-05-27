@@ -788,7 +788,7 @@ export default function TeamHub() {
                     saveTasks([...tasks, ...withIds]);
                     setDuplicatesFound([]);
                     setPendingDuplicates([]);
-                  }} style={{ fontSize: 11 }}>✅ Añadir igualmente</Btn>}
+                  }} style={{ fontSize: 11 }}>✅ Añadir tarea igualmente</Btn>}
                   <Btn variant="ghost" onClick={() => { setDuplicatesFound([]); setPendingDuplicates([]); }} style={{ fontSize: 11 }}>✕ Cerrar</Btn>
                 </div>
               </div>
@@ -982,19 +982,26 @@ export default function TeamHub() {
                 if (updates && updates.length > 0) {
                   updated = updated.map(task => {
                     const taskTitleLow = task.title.toLowerCase();
+                    const taskPerson = task.person.toLowerCase();
                     const upd = updates.find(u => {
-                      // 1. Match by exact ID
+                      // 1. Match by exact ID (most reliable)
                       if (String(u.taskId) === String(task.id)) return true;
-                      // 2. Match by taskTitle keywords
+                      // 2. Match by taskTitle - high threshold to avoid false positives
                       const updTitle = (u.taskTitle || "").toLowerCase();
-                      const updWords = updTitle.split(" ").filter(w => w.length > 3);
-                      const titleMatches = updWords.filter(w => taskTitleLow.includes(w));
-                      if (updWords.length > 0 && titleMatches.length >= Math.ceil(updWords.length * 0.5)) return true;
-                      // 3. Match by comment keywords
+                      const updWords = updTitle.split(" ").filter(w => w.length > 4);
+                      if (updWords.length >= 2) {
+                        const titleMatches = updWords.filter(w => taskTitleLow.includes(w));
+                        if (titleMatches.length >= Math.ceil(updWords.length * 0.7)) return true;
+                      }
+                      // 3. Match by comment - very high threshold + person must match
+                      const uPerson = (u.comment || "").toLowerCase();
+                      const personMatch = uPerson.includes(taskPerson.split(" ")[0]) || 
+                                         taskPerson.split(" ").some(p => p.length > 3 && uPerson.includes(p));
+                      if (!personMatch) return false;
                       const comment = (u.comment || "").toLowerCase();
-                      const commentWords = comment.split(" ").filter(w => w.length > 4);
+                      const commentWords = comment.split(" ").filter(w => w.length > 5);
                       const commentMatches = commentWords.filter(w => taskTitleLow.includes(w));
-                      return commentWords.length > 0 && commentMatches.length >= Math.ceil(commentWords.length * 0.4);
+                      return commentWords.length >= 3 && commentMatches.length >= Math.ceil(commentWords.length * 0.5);
                     });
                     if (upd) {
                       // Check if comment already exists in history

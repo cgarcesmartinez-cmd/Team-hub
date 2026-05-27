@@ -185,7 +185,7 @@ function MeetingNotes({ notes, onSave, members, tasks, onAddTasks }) {
     setExtractError("");
     setExtracted(null);
     try {
-      const existingTasks = tasks.map(t => ({ id: t.id, title: t.title, person: t.person }));
+      const existingTasks = tasks.filter(t => t.status !== "completado").map(t => ({ id: t.id, title: t.title, person: t.person }));
       const response = await fetch("/api/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

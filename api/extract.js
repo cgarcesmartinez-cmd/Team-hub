@@ -49,19 +49,19 @@ export default async function handler(req, res) {
 Equipo: ${members || ""}.
 
 Tareas existentes más relevantes:
-${relevantTasks.map(t => `ID:${t.id} | ${t.person} | ${t.title}`).join("\n")}
+${relevantTasks.map(t => `${t.id} | ${t.person} | ${t.title}`).join("\n")}
 
 REGLAS ESTRICTAS:
-1. Si el comentario contiene "terminada", "completada", "finalizada", "hecha", "terminado", "completado" → SIEMPRE pon newStatus: "completado"
-2. Si contiene "en curso", "arrancada", "iniciada", "trabajando" → newStatus: "en-curso"
-3. Si contiene "bloqueada", "parada", "pendiente de", "esperando" → newStatus: "bloqueado"
-4. SIEMPRE incluye newStatus en cada update, nunca lo omitas
-5. Si es información nueva sin relación con tareas existentes → crea tarea nueva
-6. Fechas como "29/05" → "2026-05-29"
-7. Responde SOLO con JSON válido sin markdown
+1. El taskId debe ser el número exacto del inicio de cada línea de tareas existentes.
+2. Si el comentario contiene "terminada", "completada", "finalizada", "hecha", "terminado", "completado" → SIEMPRE pon newStatus: "completado"
+3. Si contiene "en curso", "arrancada", "iniciada", "trabajando" → newStatus: "en-curso"
+4. Si contiene "bloqueada", "parada", "pendiente de", "esperando" → newStatus: "bloqueado"
+5. SIEMPRE incluye newStatus en cada update, nunca lo omitas
+6. Si es información nueva → crea tarea nueva
+7. Fechas como "29/05" → "2026-05-29"
+8. Responde SOLO con JSON válido sin markdown ni prefijos
 
-Formato EXACTO obligatorio:
-{"tasks":[{"person":"","title":"","priority":"alta|media|baja","status":"pendiente","deadline":"","notes":""}],"updates":[{"taskId":123,"taskTitle":"título exacto","comment":"comentario","newStatus":"completado"}]}`
+Formato EXACTO: {"tasks":[{"person":"","title":"","priority":"alta|media|baja","status":"pendiente","deadline":"","notes":""}],"updates":[{"taskId":14,"taskTitle":"título exacto","comment":"comentario","newStatus":"completado"}]}`
         }, {
           role: "user",
           content: notes
@@ -83,10 +83,11 @@ Formato EXACTO obligatorio:
     try {
       const parsed = JSON.parse(clean);
       const updates = (parsed.updates || []).map(u => {
-        if (!u.newStatus && isCompleted) {
-          return { ...u, newStatus: "completado" };
-        }
-        return u;
+        let cleanId = String(u.taskId || "").replace(/^(ID:|taskId:)/i, "").trim();
+        const numId = parseInt(cleanId);
+        const taskId = !isNaN(numId) ? numId : cleanId;
+        const newStatus = u.newStatus || (isCompleted ? "completado" : undefined);
+        return { ...u, taskId, newStatus };
       });
       return res.status(200).json({ tasks: parsed.tasks || [], updates });
     } catch(e) {

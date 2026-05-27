@@ -29,6 +29,11 @@ export default async function handler(req, res) {
       .slice(0, 15)
       .map(({ score, ...t }) => t);
 
+    const notesLower = notes.toLowerCase();
+    const isCompleted = notesLower.includes("completada") || notesLower.includes("terminada") ||
+                        notesLower.includes("finalizada") || notesLower.includes("hecha") ||
+                        notesLower.includes("completado") || notesLower.includes("terminado");
+
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -39,31 +44,30 @@ export default async function handler(req, res) {
         model: "llama-3.3-70b-versatile",
         messages: [{
           role: "system",
-          content: `Eres un asistente experto en gestión de equipos. Analiza notas de reunión y:
-1. Extrae TAREAS NUEVAS que no existen.
-2. Detecta ACTUALIZACIONES sobre tareas existentes, incluyendo cambios de estado.
+          content: `Eres un asistente experto en gestión de equipos. Analiza notas de reunión.
 
 Equipo: ${members || ""}.
 
 Tareas existentes más relevantes:
 ${relevantTasks.map(t => `ID:${t.id} | ${t.person} | ${t.title}`).join("\n")}
 
-REGLAS:
-- Si mencionan que una tarea está completada, terminada, hecha, finalizada → newStatus: "completado"
-- Si mencionan que está en curso, arrancada, iniciada → newStatus: "en-curso"
-- Si mencionan que está bloqueada, parada, pendiente de algo → newStatus: "bloqueado"
-- Si no hay cambio de estado → omite newStatus
-- Si es información nueva → crea tarea nueva
-- Fechas como "22/05" → "2026-05-22"
-- Responde SOLO con JSON válido sin markdown.
+REGLAS ESTRICTAS:
+1. Si el comentario contiene "terminada", "completada", "finalizada", "hecha", "terminado", "completado" → SIEMPRE pon newStatus: "completado"
+2. Si contiene "en curso", "arrancada", "iniciada", "trabajando" → newStatus: "en-curso"
+3. Si contiene "bloqueada", "parada", "pendiente de", "esperando" → newStatus: "bloqueado"
+4. SIEMPRE incluye newStatus en cada update, nunca lo omitas
+5. Si es información nueva sin relación con tareas existentes → crea tarea nueva
+6. Fechas como "29/05" → "2026-05-29"
+7. Responde SOLO con JSON válido sin markdown
 
-Formato: {"tasks":[{"person":"","title":"","priority":"alta|media|baja","status":"pendiente","deadline":"","notes":""}],"updates":[{"taskId":123,"taskTitle":"título","comment":"comentario","newStatus":"completado|en-curso|bloqueado|pendiente"}]}`
+Formato EXACTO obligatorio:
+{"tasks":[{"person":"","title":"","priority":"alta|media|baja","status":"pendiente","deadline":"","notes":""}],"updates":[{"taskId":123,"taskTitle":"título exacto","comment":"comentario","newStatus":"completado"}]}`
         }, {
           role: "user",
           content: notes
         }],
-        max_tokens: 1000,
-        temperature: 0.1
+        max_tokens: 1500,
+        temperature: 0
       })
     });
 
@@ -75,9 +79,16 @@ Formato: {"tasks":[{"person":"","title":"","priority":"alta|media|baja","status"
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content || '{"tasks":[],"updates":[]}';
     const clean = text.replace(/```json|```/g, "").trim();
+
     try {
       const parsed = JSON.parse(clean);
-      return res.status(200).json({ tasks: parsed.tasks || [], updates: parsed.updates || [] });
+      const updates = (parsed.updates || []).map(u => {
+        if (!u.newStatus && isCompleted) {
+          return { ...u, newStatus: "completado" };
+        }
+        return u;
+      });
+      return res.status(200).json({ tasks: parsed.tasks || [], updates });
     } catch(e) {
       return res.status(200).json({ tasks: [], updates: [], error: "Parse error" });
     }

@@ -733,7 +733,23 @@ export default function TeamHub() {
                 let updated = [...tasks, ...withIds];
                 if (updates && updates.length > 0) {
                   updated = updated.map(task => {
-                    const upd = updates.find(u => String(u.taskId) === String(task.id));
+                    const upd = updates.find(u => {
+                      // 1. Match by exact ID
+                      if (String(u.taskId) === String(task.id)) return true;
+                      // 2. Match by taskTitle similarity (primary fallback)
+                      const taskTitle = task.title.toLowerCase();
+                      const updTitle = (u.taskTitle || "").toLowerCase();
+                      if (updTitle.length > 3) {
+                        const updWords = updTitle.split(" ").filter(w => w.length > 3);
+                        const matches = updWords.filter(w => taskTitle.includes(w));
+                        if (updWords.length > 0 && matches.length >= Math.ceil(updWords.length * 0.5)) return true;
+                      }
+                      // 3. Match by comment keywords against task title
+                      const comment = (u.comment || "").toLowerCase();
+                      const commentWords = comment.split(" ").filter(w => w.length > 4);
+                      const commentMatches = commentWords.filter(w => taskTitle.includes(w));
+                      return commentWords.length > 0 && commentMatches.length >= Math.ceil(commentWords.length * 0.4);
+                    });
                     if (upd) {
                       const entry = { date: today, comment: upd.comment };
                       const newStatus = upd.newStatus || task.status;

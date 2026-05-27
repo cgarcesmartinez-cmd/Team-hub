@@ -758,12 +758,21 @@ export default function TeamHub() {
                 </div>
                 {duplicatesFound.map((d, i) => (
                   <div key={i} style={{ fontSize: 12, color: COLORS.text, marginBottom: 6, paddingBottom: 6, borderBottom: `1px solid ${COLORS.border}` }}>
-                    <div><span style={{ color: COLORS.muted }}>Nueva: </span>{d.new}</div>
-                    <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 2 }}>↳ Ya existe como: <span style={{ color: COLORS.accent }}>{d.existing}</span></div>
+                    {d.type === "update" ? (
+                      <>
+                        <div><span style={{ color: COLORS.muted }}>Comentario ya registrado: </span>{d.new}</div>
+                        <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 2 }}>↳ En tarea: <span style={{ color: COLORS.accent }}>{d.existing}</span></div>
+                      </>
+                    ) : (
+                      <>
+                        <div><span style={{ color: COLORS.muted }}>Tarea duplicada: </span>{d.new}</div>
+                        <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 2 }}>↳ Ya existe como: <span style={{ color: COLORS.accent }}>{d.existing}</span></div>
+                      </>
+                    )}
                   </div>
                 ))}
                 <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                  <Btn onClick={() => {
+                  {pendingDuplicates.length > 0 && <Btn onClick={() => {
                     const today = new Date().toISOString().slice(0, 10);
                     const withIds = pendingDuplicates.map((t, i) => ({
                       ...t,
@@ -779,8 +788,8 @@ export default function TeamHub() {
                     saveTasks([...tasks, ...withIds]);
                     setDuplicatesFound([]);
                     setPendingDuplicates([]);
-                  }} style={{ fontSize: 11 }}>✅ Añadir igualmente</Btn>
-                  <Btn variant="ghost" onClick={() => { setDuplicatesFound([]); setPendingDuplicates([]); }} style={{ fontSize: 11 }}>✕ Descartar</Btn>
+                  }} style={{ fontSize: 11 }}>✅ Añadir igualmente</Btn>}
+                  <Btn variant="ghost" onClick={() => { setDuplicatesFound([]); setPendingDuplicates([]); }} style={{ fontSize: 11 }}>✕ Cerrar</Btn>
                 </div>
               </div>
             </div>
@@ -969,6 +978,7 @@ export default function TeamHub() {
                   history: []
                 }));
                 let updated = [...tasks, ...withIds];
+                const skippedUpdates = [];
                 if (updates && updates.length > 0) {
                   updated = updated.map(task => {
                     const taskTitleLow = task.title.toLowerCase();
@@ -994,7 +1004,10 @@ export default function TeamHub() {
                         const matches = hWords.filter(w => uWords.includes(w));
                         return hWords.length > 0 && matches.length >= Math.ceil(hWords.length * 0.6);
                       });
-                      if (alreadyInHistory) return task;
+                      if (alreadyInHistory) {
+                        skippedUpdates.push({ task: task.title, comment: upd.comment });
+                        return task;
+                      }
                       const entry = { date: today, comment: upd.comment };
                       const newStatus = upd.newStatus || task.status;
                       return { ...task, status: newStatus, history: [...(task.history || []), entry] };
@@ -1003,6 +1016,12 @@ export default function TeamHub() {
                   });
                 }
                 saveTasks(updated);
+                if (skippedUpdates.length > 0) {
+                  setDuplicatesFound(prev => [
+                    ...prev,
+                    ...skippedUpdates.map(s => ({ type: "update", new: s.comment, existing: s.task }))
+                  ]);
+                }
               }}
             />
             {/* Historial */}

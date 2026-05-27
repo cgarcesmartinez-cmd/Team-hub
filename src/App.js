@@ -334,6 +334,164 @@ export default function TeamHub() {
   const [activeGanttMonth, setActiveGanttMonth] = useState(new Date().toISOString().slice(0, 7));
   const [expandedMember, setExpandedMember] = useState(null);
 
+  function exportKPIReport() {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const dateStr = new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+
+    const memberStats = members.map(m => {
+      const mtasks = tasks.filter(t => t.person === m);
+      const active = mtasks.filter(t => t.status !== "completado");
+      const completed = mtasks.filter(t => t.status === "completado");
+      const blocked = mtasks.filter(t => t.status === "bloqueado");
+      const overdue = active.filter(t => t.deadline && new Date(t.deadline + "T00:00:00") < today);
+      const total = mtasks.length;
+      const completionRate = total > 0 ? Math.round((completed.length / total) * 100) : 0;
+      const completedWithDates = completed.filter(t => t.createdAt && t.history && t.history.length > 0);
+      const avgDays = completedWithDates.length > 0
+        ? Math.round(completedWithDates.reduce((acc, t) => {
+            const created = new Date(t.createdAt + "T00:00:00");
+            const lastHistory = new Date(t.history[t.history.length-1].date + "T00:00:00");
+            return acc + Math.max(0, (lastHistory - created) / 86400000);
+          }, 0) / completedWithDates.length)
+        : null;
+      const workload = active.reduce((acc, t) => acc + ({ alta: 3, media: 2, baja: 1 }[t.priority] || 1), 0);
+      const urgentTasks = active.filter(t => { const d = daysUntil(t.deadline); return d !== null && d <= 3; });
+      return { m, active: active.length, completed: completed.length, blocked: blocked.length, overdue: overdue.length, total, completionRate, avgDays, workload, urgentTasks, activeTasks: active };
+    }).filter(s => s.total > 0).sort((a, b) => b.workload - a.workload);
+
+    const totalActive = tasks.filter(t => t.status !== "completado").length;
+    const totalCompleted = tasks.filter(t => t.status === "completado").length;
+    const totalBlocked = tasks.filter(t => t.status === "bloqueado").length;
+    const totalOverdue = tasks.filter(t => t.deadline && t.status !== "completado" && new Date(t.deadline + "T00:00:00") < today).length;
+    const globalRate = tasks.length > 0 ? Math.round((totalCompleted / tasks.length) * 100) : 0;
+    const maxWorkload = Math.max(...memberStats.map(s => s.workload), 1);
+
+    const getColor = (rate) => rate >= 70 ? "#22c55e" : rate >= 40 ? "#eab308" : "#ef4444";
+    const getWorkloadColor = (w, max) => {
+      const pct = w / max;
+      return pct > 0.7 ? "#ef4444" : pct > 0.4 ? "#eab308" : "#22c55e";
+    };
+
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reporte KPI Equipo MHE — ${dateStr}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f8f9fa; color: #1a1a2e; }
+  .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white; padding: 40px 48px; }
+  .header-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+  .header h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+  .header .subtitle { font-size: 13px; color: #94a3b8; margin-top: 4px; }
+  .header .date { font-size: 12px; color: #e8c547; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+  .summary { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; background: white; border-bottom: 3px solid #e8c547; }
+  .summary-card { padding: 24px 20px; text-align: center; border-right: 1px solid #f1f5f9; }
+  .summary-card:last-child { border-right: none; }
+  .summary-card .value { font-size: 36px; font-weight: 800; line-height: 1; margin-bottom: 6px; }
+  .summary-card .label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
+  .content { padding: 32px 48px; }
+  .section-title { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 2px; font-weight: 700; margin-bottom: 20px; padding-bottom: 8px; border-bottom: 2px solid #f1f5f9; }
+  .person-card { background: white; border-radius: 12px; padding: 24px 28px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border-left: 4px solid #e8c547; page-break-inside: avoid; }
+  .person-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .person-name { font-size: 18px; font-weight: 700; color: #1a1a2e; }
+  .person-total { font-size: 12px; color: #64748b; margin-top: 3px; }
+  .completion-rate { text-align: right; }
+  .completion-rate .rate { font-size: 32px; font-weight: 800; line-height: 1; }
+  .completion-rate .rate-label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
+  .progress-bar { height: 8px; background: #f1f5f9; border-radius: 4px; overflow: hidden; margin-bottom: 16px; }
+  .progress-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+  .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px; }
+  .stat-item { text-align: center; padding: 10px; background: #f8f9fa; border-radius: 8px; }
+  .stat-value { font-size: 20px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+  .stat-label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+  .workload-row { display: flex; align-items: center; gap: 12px; }
+  .workload-label { font-size: 11px; color: #64748b; width: 80px; flex-shrink: 0; }
+  .workload-bar { flex: 1; height: 6px; background: #f1f5f9; border-radius: 3px; overflow: hidden; }
+  .workload-fill { height: 100%; border-radius: 3px; }
+  .workload-value { font-size: 11px; color: #64748b; width: 24px; text-align: right; }
+  .urgent-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid #f1f5f9; }
+  .urgent-title { font-size: 10px; color: #ef4444; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 6px; }
+  .urgent-task { font-size: 12px; color: #475569; padding: 4px 0; border-bottom: 1px solid #f8f9fa; display: flex; justify-content: space-between; }
+  .urgent-deadline { font-size: 11px; color: #ef4444; font-weight: 600; }
+  .footer { background: #1a1a2e; color: #64748b; padding: 20px 48px; font-size: 11px; display: flex; justify-content: space-between; margin-top: 32px; }
+  @media print { body { background: white; } .header { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-top">
+    <div>
+      <h1>Material Handling Engineering</h1>
+      <div class="subtitle">Reporte de KPIs del Equipo · ${dateStr}</div>
+    </div>
+    <div class="date">Ebro Factory</div>
+  </div>
+</div>
+
+<div class="summary">
+  <div class="summary-card"><div class="value" style="color:#1a1a2e">${tasks.length}</div><div class="label">Total Tareas</div></div>
+  <div class="summary-card"><div class="value" style="color:#3b82f6">${totalActive}</div><div class="label">Activas</div></div>
+  <div class="summary-card"><div class="value" style="color:#22c55e">${totalCompleted}</div><div class="label">Completadas</div></div>
+  <div class="summary-card"><div class="value" style="color:#ef4444">${totalBlocked}</div><div class="label">Bloqueadas</div></div>
+  <div class="summary-card"><div class="value" style="color:${getColor(globalRate)}">${globalRate}%</div><div class="label">Tasa Global</div></div>
+</div>
+
+<div class="content">
+  <div class="section-title">Rendimiento por persona</div>
+  ${memberStats.map(s => `
+  <div class="person-card">
+    <div class="person-header">
+      <div>
+        <div class="person-name">${s.m}</div>
+        <div class="person-total">${s.total} tareas totales</div>
+      </div>
+      <div class="completion-rate">
+        <div class="rate" style="color:${getColor(s.completionRate)}">${s.completionRate}%</div>
+        <div class="rate-label">Completado</div>
+      </div>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" style="width:${s.completionRate}%;background:${getColor(s.completionRate)}"></div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-item"><div class="stat-value" style="color:#3b82f6">${s.active}</div><div class="stat-label">Activas</div></div>
+      <div class="stat-item"><div class="stat-value" style="color:#22c55e">${s.completed}</div><div class="stat-label">Completadas</div></div>
+      <div class="stat-item"><div class="stat-value" style="color:${s.blocked > 0 ? '#ef4444' : '#94a3b8'}">${s.blocked}</div><div class="stat-label">Bloqueadas</div></div>
+      <div class="stat-item"><div class="stat-value" style="color:${s.overdue > 0 ? '#ef4444' : '#94a3b8'}">${s.overdue}</div><div class="stat-label">Vencidas</div></div>
+      <div class="stat-item"><div class="stat-value" style="color:#e8c547">${s.avgDays !== null ? s.avgDays + 'd' : '—'}</div><div class="stat-label">Media cierre</div></div>
+    </div>
+    <div class="workload-row">
+      <div class="workload-label">Carga trabajo</div>
+      <div class="workload-bar"><div class="workload-fill" style="width:${(s.workload/maxWorkload)*100}%;background:${getWorkloadColor(s.workload, maxWorkload)}"></div></div>
+      <div class="workload-value">${s.workload}</div>
+    </div>
+    ${s.urgentTasks.length > 0 ? `
+    <div class="urgent-section">
+      <div class="urgent-title">⚠️ Tareas urgentes (≤3 días)</div>
+      ${s.urgentTasks.map(t => `<div class="urgent-task"><span>${t.title.length > 60 ? t.title.slice(0,60)+'…' : t.title}</span><span class="urgent-deadline">${formatDate(t.deadline)}</span></div>`).join('')}
+    </div>` : ''}
+  </div>`).join('')}
+</div>
+
+<div class="footer">
+  <span>Team Hub · Material Handling Engineering · Ebro Factory</span>
+  <span>Generado el ${new Date().toLocaleString("es-ES")}</span>
+</div>
+</body>
+</html>`;
+
+    const blob = new Blob([html], { type: "text/html;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `KPI-MHE-${todayKey}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function exportToExcel() {
     const today = new Date().toLocaleDateString("es-ES");
     const headers = ["PERSONA","TAREA","ESTADO","PRIORIDAD","DEADLINE","DÍAS RESTANTES","FECHA CREACIÓN","NOTAS","HISTORIAL"];
@@ -591,14 +749,14 @@ export default function TeamHub() {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: 4, marginBottom: 20, borderBottom: `1px solid ${COLORS.border}`, paddingBottom: 0 }}>
-          {["tareas", "gantt", "meeting", "equipo"].map(tab => (
+          {["tareas", "gantt", "meeting", "kpis", "equipo"].map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)} style={{
               background: "transparent", border: "none", cursor: "pointer", padding: "10px 18px",
               fontFamily: "inherit", fontSize: 13, fontWeight: 500,
               color: activeTab === tab ? COLORS.accent : COLORS.muted,
               borderBottom: `2px solid ${activeTab === tab ? COLORS.accent : "transparent"}`,
               textTransform: "capitalize", transition: "all .15s", letterSpacing: 0.5
-            }}>{tab === "meeting" ? "Meeting notes" : tab === "gantt" ? "Gantt" : tab.charAt(0).toUpperCase() + tab.slice(1)}</button>
+            }}>{tab === "meeting" ? "Meeting notes" : tab === "gantt" ? "Gantt" : tab === "kpis" ? "KPIs" : tab.charAt(0).toUpperCase() + tab.slice(1)}</button>
           ))}
         </div>
 
@@ -720,7 +878,23 @@ export default function TeamHub() {
               tasks={tasks}
               onAddTasks={(newTasks, updates) => {
                 const today = new Date().toISOString().slice(0, 10);
-                const withIds = newTasks.map((t, i) => ({
+                // Detect duplicate tasks
+                const duplicates = [];
+                const validNewTasks = newTasks.filter(nt => {
+                  const ntTitle = nt.title.toLowerCase();
+                  const ntWords = ntTitle.split(" ").filter(w => w.length > 3);
+                  const isDup = tasks.some(existing => {
+                    const exTitle = existing.title.toLowerCase();
+                    const matches = ntWords.filter(w => exTitle.includes(w));
+                    return ntWords.length > 0 && matches.length >= Math.ceil(ntWords.length * 0.6);
+                  });
+                  if (isDup) duplicates.push(nt.title);
+                  return !isDup;
+                });
+                if (duplicates.length > 0) {
+                  alert("⚠️ Tareas duplicadas detectadas (no añadidas):\n" + duplicates.join("\n"));
+                }
+                const withIds = validNewTasks.map((t, i) => ({
                   ...t,
                   id: Date.now() + i,
                   createdAt: today,
@@ -750,6 +924,14 @@ export default function TeamHub() {
                       return commentWords.length > 0 && commentMatches.length >= Math.ceil(commentWords.length * 0.4);
                     });
                     if (upd) {
+                      // Check if comment already exists in history
+                      const alreadyInHistory = (task.history || []).some(h => {
+                        const hWords = h.comment.toLowerCase().split(" ").filter(w => w.length > 3);
+                        const uWords = upd.comment.toLowerCase().split(" ").filter(w => w.length > 3);
+                        const matches = hWords.filter(w => uWords.includes(w));
+                        return hWords.length > 0 && matches.length >= Math.ceil(hWords.length * 0.6);
+                      });
+                      if (alreadyInHistory) return task;
                       const entry = { date: today, comment: upd.comment };
                       const newStatus = upd.newStatus || task.status;
                       return { ...task, status: newStatus, history: [...(task.history || []), entry] };
@@ -912,6 +1094,113 @@ export default function TeamHub() {
                         <div style={{ width: 12, height: 12, borderRadius: 2, background: COLORS.danger + "55", border: `1px solid ${COLORS.danger}` }} /> Urgente/Vencida
                       </div>
                     </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* Tab: KPIs */}
+        {activeTab === "kpis" && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <div style={{ fontSize: 11, color: COLORS.muted, letterSpacing: 2, textTransform: "uppercase" }}>Rendimiento del equipo</div>
+              <Btn variant="ghost" style={{ fontSize: 11 }} onClick={exportKPIReport}>📊 Exportar reporte</Btn>
+            </div>
+            {(() => {
+              const today = new Date();
+              today.setHours(0,0,0,0);
+
+              const memberStats = members.map(m => {
+                const mtasks = tasks.filter(t => t.person === m);
+                const active = mtasks.filter(t => t.status !== "completado");
+                const completed = mtasks.filter(t => t.status === "completado");
+                const blocked = mtasks.filter(t => t.status === "bloqueado");
+                const overdue = active.filter(t => t.deadline && new Date(t.deadline + "T00:00:00") < today);
+                const total = mtasks.length;
+                const completionRate = total > 0 ? Math.round((completed.length / total) * 100) : 0;
+
+                // Average completion time
+                const completedWithDates = completed.filter(t => t.createdAt && t.history && t.history.length > 0);
+                const avgDays = completedWithDates.length > 0
+                  ? Math.round(completedWithDates.reduce((acc, t) => {
+                      const created = new Date(t.createdAt + "T00:00:00");
+                      const lastHistory = new Date(t.history[t.history.length-1].date + "T00:00:00");
+                      return acc + Math.max(0, (lastHistory - created) / 86400000);
+                    }, 0) / completedWithDates.length)
+                  : null;
+
+                // Workload score (active tasks weighted by priority)
+                const workload = active.reduce((acc, t) => {
+                  const w = { alta: 3, media: 2, baja: 1 }[t.priority] || 1;
+                  return acc + w;
+                }, 0);
+
+                return { m, active: active.length, completed: completed.length, blocked: blocked.length, overdue: overdue.length, total, completionRate, avgDays, workload };
+              }).filter(s => s.total > 0).sort((a, b) => b.workload - a.workload);
+
+              const maxWorkload = Math.max(...memberStats.map(s => s.workload), 1);
+
+              return (
+                <div>
+                  {/* Summary cards */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, marginBottom: 24 }}>
+                    {[
+                      { label: "Total tareas", value: tasks.length, color: COLORS.text },
+                      { label: "Activas", value: tasks.filter(t => t.status !== "completado").length, color: COLORS.info },
+                      { label: "Completadas", value: tasks.filter(t => t.status === "completado").length, color: COLORS.success },
+                      { label: "Bloqueadas", value: tasks.filter(t => t.status === "bloqueado").length, color: COLORS.danger },
+                      { label: "Vencidas", value: tasks.filter(t => t.deadline && t.status !== "completado" && new Date(t.deadline + "T00:00:00") < today).length, color: COLORS.danger },
+                    ].map((card, i) => (
+                      <div key={i} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "14px 16px", textAlign: "center" }}>
+                        <div style={{ fontSize: 28, fontWeight: 700, color: card.color, marginBottom: 4 }}>{card.value}</div>
+                        <div style={{ fontSize: 11, color: COLORS.muted, letterSpacing: 0.5 }}>{card.label}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Per person KPIs */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {memberStats.map(s => (
+                      <div key={s.m} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "16px 20px" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: 14 }}>{s.m}</div>
+                            <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 2 }}>{s.total} tareas totales</div>
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ fontSize: 22, fontWeight: 700, color: s.completionRate >= 70 ? COLORS.success : s.completionRate >= 40 ? COLORS.accent : COLORS.muted }}>
+                              {s.completionRate}%
+                            </div>
+                            <div style={{ fontSize: 10, color: COLORS.muted }}>completado</div>
+                          </div>
+                        </div>
+
+                        {/* Progress bar */}
+                        <div style={{ height: 6, background: COLORS.border, borderRadius: 3, overflow: "hidden", marginBottom: 12 }}>
+                          <div style={{ height: "100%", width: `${s.completionRate}%`, background: s.completionRate >= 70 ? COLORS.success : s.completionRate >= 40 ? COLORS.accent : COLORS.muted, borderRadius: 3, transition: "width .3s" }} />
+                        </div>
+
+                        {/* Stats row */}
+                        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 12 }}>
+                          <div style={{ fontSize: 12 }}><span style={{ color: COLORS.info, fontWeight: 600 }}>{s.active}</span> <span style={{ color: COLORS.muted }}>activas</span></div>
+                          <div style={{ fontSize: 12 }}><span style={{ color: COLORS.success, fontWeight: 600 }}>{s.completed}</span> <span style={{ color: COLORS.muted }}>completadas</span></div>
+                          {s.blocked > 0 && <div style={{ fontSize: 12 }}><span style={{ color: COLORS.danger, fontWeight: 600 }}>{s.blocked}</span> <span style={{ color: COLORS.muted }}>bloqueadas</span></div>}
+                          {s.overdue > 0 && <div style={{ fontSize: 12 }}><span style={{ color: COLORS.danger, fontWeight: 600 }}>⚠️ {s.overdue}</span> <span style={{ color: COLORS.muted }}>vencidas</span></div>}
+                          {s.avgDays !== null && <div style={{ fontSize: 12 }}><span style={{ color: COLORS.accent, fontWeight: 600 }}>{s.avgDays}d</span> <span style={{ color: COLORS.muted }}>media completado</span></div>}
+                        </div>
+
+                        {/* Workload bar */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ fontSize: 10, color: COLORS.muted, width: 60, flexShrink: 0 }}>Carga</div>
+                          <div style={{ flex: 1, height: 4, background: COLORS.border, borderRadius: 2, overflow: "hidden" }}>
+                            <div style={{ height: "100%", width: `${(s.workload / maxWorkload) * 100}%`, background: s.workload / maxWorkload > 0.7 ? COLORS.danger : s.workload / maxWorkload > 0.4 ? COLORS.accent : COLORS.success, borderRadius: 2 }} />
+                          </div>
+                          <div style={{ fontSize: 10, color: COLORS.muted, width: 30, textAlign: "right" }}>{s.workload}</div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               );

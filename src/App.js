@@ -332,6 +332,7 @@ export default function TeamHub() {
   const todayKey = new Date().toISOString().slice(0, 10);
   const [search, setSearch] = useState("");
   const [activeGanttMonth, setActiveGanttMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [expandedMember, setExpandedMember] = useState(null);
 
   function exportToExcel() {
     const today = new Date().toLocaleDateString("es-ES");
@@ -733,21 +734,19 @@ export default function TeamHub() {
                 let updated = [...tasks, ...withIds];
                 if (updates && updates.length > 0) {
                   updated = updated.map(task => {
+                    const taskTitleLow = task.title.toLowerCase();
                     const upd = updates.find(u => {
                       // 1. Match by exact ID
                       if (String(u.taskId) === String(task.id)) return true;
-                      // 2. Match by taskTitle similarity (primary fallback)
-                      const taskTitle = task.title.toLowerCase();
+                      // 2. Match by taskTitle keywords
                       const updTitle = (u.taskTitle || "").toLowerCase();
-                      if (updTitle.length > 3) {
-                        const updWords = updTitle.split(" ").filter(w => w.length > 3);
-                        const matches = updWords.filter(w => taskTitle.includes(w));
-                        if (updWords.length > 0 && matches.length >= Math.ceil(updWords.length * 0.5)) return true;
-                      }
-                      // 3. Match by comment keywords against task title
+                      const updWords = updTitle.split(" ").filter(w => w.length > 3);
+                      const titleMatches = updWords.filter(w => taskTitleLow.includes(w));
+                      if (updWords.length > 0 && titleMatches.length >= Math.ceil(updWords.length * 0.5)) return true;
+                      // 3. Match by comment keywords
                       const comment = (u.comment || "").toLowerCase();
                       const commentWords = comment.split(" ").filter(w => w.length > 4);
-                      const commentMatches = commentWords.filter(w => taskTitle.includes(w));
+                      const commentMatches = commentWords.filter(w => taskTitleLow.includes(w));
                       return commentWords.length > 0 && commentMatches.length >= Math.ceil(commentWords.length * 0.4);
                     });
                     if (upd) {
@@ -988,8 +987,6 @@ export default function TeamHub() {
                       ]
                     }
                   ];
-
-                  const [expandedMember, setExpandedMember] = React.useState(null);
 
                   return (
                     <div>

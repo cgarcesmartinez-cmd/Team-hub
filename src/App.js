@@ -333,6 +333,8 @@ export default function TeamHub() {
   const [search, setSearch] = useState("");
   const [activeGanttMonth, setActiveGanttMonth] = useState(new Date().toISOString().slice(0, 7));
   const [expandedMember, setExpandedMember] = useState(null);
+  const [duplicatesFound, setDuplicatesFound] = useState([]);
+  const [pendingDuplicates, setPendingDuplicates] = useState([]);
 
   function exportKPIReport() {
     const today = new Date();
@@ -746,6 +748,44 @@ export default function TeamHub() {
             </div>
           </div>
         )}
+        {duplicatesFound.length > 0 && (
+          <div style={{ background: COLORS.accent + "12", border: `1px solid ${COLORS.accent}44`, borderRadius: 8, padding: "16px 18px", marginBottom: 20 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+              <span style={{ fontSize: 16 }}>🔁</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.accent, marginBottom: 8, letterSpacing: 1, textTransform: "uppercase" }}>
+                  {duplicatesFound.length} tarea{duplicatesFound.length > 1 ? "s" : ""} duplicada{duplicatesFound.length > 1 ? "s" : ""} detectada{duplicatesFound.length > 1 ? "s" : ""}
+                </div>
+                {duplicatesFound.map((d, i) => (
+                  <div key={i} style={{ fontSize: 12, color: COLORS.text, marginBottom: 6, paddingBottom: 6, borderBottom: `1px solid ${COLORS.border}` }}>
+                    <div><span style={{ color: COLORS.muted }}>Nueva: </span>{d.new}</div>
+                    <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 2 }}>↳ Ya existe como: <span style={{ color: COLORS.accent }}>{d.existing}</span></div>
+                  </div>
+                ))}
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <Btn onClick={() => {
+                    const today = new Date().toISOString().slice(0, 10);
+                    const withIds = pendingDuplicates.map((t, i) => ({
+                      ...t,
+                      id: Date.now() + i,
+                      createdAt: today,
+                      person: t.person || members[0] || "",
+                      status: t.status || "pendiente",
+                      priority: t.priority || "media",
+                      deadline: t.deadline || "",
+                      notes: t.notes || "",
+                      history: []
+                    }));
+                    saveTasks([...tasks, ...withIds]);
+                    setDuplicatesFound([]);
+                    setPendingDuplicates([]);
+                  }} style={{ fontSize: 11 }}>✅ Añadir igualmente</Btn>
+                  <Btn variant="ghost" onClick={() => { setDuplicatesFound([]); setPendingDuplicates([]); }} style={{ fontSize: 11 }}>✕ Descartar</Btn>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: 4, marginBottom: 20, borderBottom: `1px solid ${COLORS.border}`, paddingBottom: 0 }}>
@@ -881,18 +921,41 @@ export default function TeamHub() {
                 // Detect duplicate tasks
                 const duplicates = [];
                 const validNewTasks = newTasks.filter(nt => {
-                  const ntTitle = nt.title.toLowerCase();
+                  const ntTitle = (nt.title || "").toLowerCase();
                   const ntWords = ntTitle.split(" ").filter(w => w.length > 3);
+                  if (ntWords.length === 0) return true;
                   const isDup = tasks.some(existing => {
                     const exTitle = existing.title.toLowerCase();
-                    const matches = ntWords.filter(w => exTitle.includes(w));
-                    return ntWords.length > 0 && matches.length >= Math.ceil(ntWords.length * 0.6);
+                    const exWords = exTitle.split(" ").filter(w => w.length > 3);
+                    const forwardMatches = ntWords.filter(w => exTitle.includes(w));
+                    const backwardMatches = exWords.filter(w => ntTitle.includes(w));
+                    return forwardMatches.length >= Math.ceil(ntWords.length * 0.5) ||
+                           backwardMatches.length >= Math.ceil(exWords.length * 0.5);
                   });
-                  if (isDup) duplicates.push(nt.title);
+                  if (isDup) {
+                    const existingMatch = tasks.find(existing => {
+                      const exTitle = existing.title.toLowerCase();
+                      const forwardMatches = ntWords.filter(w => exTitle.includes(w));
+                      return forwardMatches.length >= Math.ceil(ntWords.length * 0.5);
+                    });
+                    duplicates.push({ new: nt.title, existing: existingMatch?.title || "?" });
+                  }
                   return !isDup;
                 });
                 if (duplicates.length > 0) {
-                  alert("⚠️ Tareas duplicadas detectadas (no añadidas):\n" + duplicates.join("\n"));
+                  setDuplicatesFound(duplicates);
+                  // Store the duplicate tasks in case user wants to force add them
+                  const dupTasks = newTasks.filter(nt => {
+                    const ntTitle = (nt.title || "").toLowerCase();
+                    const ntWords = ntTitle.split(" ").filter(w => w.length > 3);
+                    if (ntWords.length === 0) return false;
+                    return tasks.some(existing => {
+                      const exTitle = existing.title.toLowerCase();
+                      const forwardMatches = ntWords.filter(w => exTitle.includes(w));
+                      return forwardMatches.length >= Math.ceil(ntWords.length * 0.5);
+                    });
+                  });
+                  setPendingDuplicates(dupTasks);
                 }
                 const withIds = validNewTasks.map((t, i) => ({
                   ...t,

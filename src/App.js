@@ -1186,8 +1186,10 @@ export default function TeamHub() {
                           const days = daysUntil(task.deadline);
                           const barColor = days < 0 ? COLORS.danger : days <= 3 ? COLORS.danger : days <= 7 ? COLORS.accent : COLORS.success;
                           // Bar starts from task creation date or start, ends at deadline
-                          const startPct = task.createdAt ? getPct(task.createdAt) : 0;
-                          const barWidth = Math.max(0.5, pct - startPct);
+                          // Use createdAt as bar start, fallback to today if missing
+                          const taskStart = task.createdAt || new Date().toISOString().slice(0, 10);
+                          const startPct = getPct(taskStart);
+                          const barWidth = Math.max(1, pct - startPct);
                           return (
                             <div key={task.id} style={{ display: "flex", alignItems: "center", marginBottom: 6, gap: 8 }}>
                               <div style={{ width: 152, flexShrink: 0, fontSize: 11, color: COLORS.text, textAlign: "right", paddingRight: 8, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={task.title}>

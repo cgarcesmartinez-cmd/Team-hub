@@ -41,9 +41,18 @@ function daysUntil(d) {
   return Math.ceil((target - today) / 86400000);
 }
 
-function DeadlineBadge({ date }) {
+function DeadlineBadge({ date, extended }) {
   const days = daysUntil(date);
   if (days === null) return null;
+  if (extended && days <= 0) {
+    return (
+      <span style={{
+        fontSize: 10, fontWeight: 700, letterSpacing: 1,
+        color: "#f97316", border: "1px solid #f97316", borderRadius: 3,
+        padding: "1px 5px", textTransform: "uppercase"
+      }}>↗ Alargada</span>
+    );
+  }
   let color = COLORS.success;
   if (days <= 0) color = COLORS.danger;
   else if (days <= 2) color = COLORS.danger;
@@ -669,7 +678,18 @@ export default function TeamHub() {
   }
 
   function updateTask(form) {
-    saveTasks(tasks.map(t => t.id === editTarget.id ? { ...t, ...form } : t));
+    saveTasks(tasks.map(t => {
+      if (t.id !== editTarget.id) return t;
+      const updated = { ...t, ...form };
+      if (form.deadline && t.deadline && form.deadline !== t.deadline) {
+        updated.originalDeadline = t.originalDeadline || t.deadline;
+        updated.extended = true;
+        const today = new Date().toISOString().slice(0, 10);
+        const entry = { date: today, comment: `Fecha alargada de ${formatDate(t.deadline)} a ${formatDate(form.deadline)}` };
+        updated.history = [...(t.history || []), entry];
+      }
+      return updated;
+    }));
     setModal(null);
     setEditTarget(null);
   }
@@ -741,8 +761,14 @@ export default function TeamHub() {
                 {urgentTasks.length} tarea{urgentTasks.length > 1 ? "s" : ""} urgente{urgentTasks.length > 1 ? "s" : ""}
               </div>
               {urgentTasks.map(t => (
-                <div key={t.id} style={{ fontSize: 12, color: COLORS.text, marginBottom: 3 }}>
-                  <span style={{ color: COLORS.muted }}>{t.person} →</span> {t.title} <DeadlineBadge date={t.deadline} />
+                <div key={t.id} onClick={() => { setEditTarget(t); setModal("editTask"); }}
+                  style={{ fontSize: 12, color: COLORS.text, marginBottom: 4, display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: "3px 6px", borderRadius: 4, transition: "background .15s" }}
+                  onMouseEnter={e => e.currentTarget.style.background = COLORS.border + "44"}
+                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                  <span style={{ color: COLORS.muted, flexShrink: 0 }}>{t.person} →</span>
+                  <span style={{ flex: 1 }}>{t.title}</span>
+                  <DeadlineBadge date={t.deadline} extended={t.extended} />
+                  <span style={{ color: COLORS.muted, fontSize: 10, flexShrink: 0 }}>✏️</span>
                 </div>
               ))}
             </div>
@@ -875,13 +901,16 @@ export default function TeamHub() {
                               <span style={{ color: COLORS.border }}>·</span>
                               <Tag label={STATUS_CONFIG[task.status]?.label} color={STATUS_CONFIG[task.status]?.color} />
                               <Tag label={PRIORITY_CONFIG[task.priority]?.label} color={PRIORITY_CONFIG[task.priority]?.color} />
-                              {task.deadline && (
-                                <>
-                                  <span style={{ color: COLORS.border }}>·</span>
-                                  <span style={{ fontSize: 11, color: COLORS.muted }}>{formatDate(task.deadline)}</span>
-                                  <DeadlineBadge date={task.deadline} />
-                                </>
-                              )}
+                               {task.deadline && (
+                                 <>
+                                   <span style={{ color: COLORS.border }}>·</span>
+                                   <span style={{ fontSize: 11, color: COLORS.muted }}>{formatDate(task.deadline)}</span>
+                                   {task.extended && task.originalDeadline && (
+                                     <span style={{ fontSize: 10, color: COLORS.muted }}>({formatDate(task.originalDeadline)})</span>
+                                   )}
+                                   <DeadlineBadge date={task.deadline} extended={task.extended} />
+                                 </>
+                               )}
                             </div>
                             {task.notes && <div style={{ marginTop: 7, fontSize: 12, color: COLORS.muted, lineHeight: 1.5 }}>{task.notes}</div>}
                             {task.createdAt && <div style={{ marginTop: 5, fontSize: 10, color: COLORS.border, letterSpacing: 0.5 }}>Creada el {new Date(task.createdAt + "T00:00:00").toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" })}</div>}

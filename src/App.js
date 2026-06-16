@@ -359,8 +359,13 @@ export default function TeamHub() {
   function exportGantt() {
     const today = new Date();
     const dateStr = new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    const todayExport = new Date().toISOString().slice(0, 10);
     const withDeadline = tasks
-      .filter(t => t.deadline && t.status !== "completado")
+      .filter(t => {
+        if (!t.deadline) return false;
+        if (t.status === "completado") return t.deadline < todayExport;
+        return true;
+      })
       .sort((a, b) => a.deadline.localeCompare(b.deadline));
 
     const byPerson = {};
@@ -1247,8 +1252,14 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
               const today = new Date();
               today.setHours(0,0,0,0);
 
+              const todayStr = today.toISOString().slice(0, 10);
               let withDeadline = tasks
-                .filter(t => t.deadline && t.status !== "completado")
+                .filter(t => {
+                  if (!t.deadline) return false;
+                  // Show active tasks always, show completed only if deadline is in the past
+                  if (t.status === "completado") return t.deadline < todayStr;
+                  return true;
+                })
                 .sort((a, b) => a.deadline.localeCompare(b.deadline));
 
               // Apply date filter
@@ -1304,7 +1315,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                           <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 16, borderLeft: `2px solid ${isCurrentWeek ? COLORS.accent : COLORS.border}` }}>
                             {wTasks.map(t => {
                               const days = daysUntil(t.deadline);
-                              const barColor = t.extended ? "#f97316" : days !== null && days < 0 ? COLORS.danger : days !== null && days <= 5 ? COLORS.accent : COLORS.success;
+                              const barColor = t.status === "completado" ? COLORS.success : t.extended ? "#f97316" : days !== null && days < 0 ? COLORS.danger : days !== null && days <= 5 ? COLORS.accent : COLORS.success;
                               return (
                                 <div key={t.id} onClick={() => { setEditTarget(t); setModal("editTask"); }}
                                   style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "10px 14px", cursor: "pointer", borderLeft: `3px solid ${barColor}` }}
@@ -1397,7 +1408,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                         {pTasks.map(task => {
                           const pct = getPct(task.deadline);
                           const days = daysUntil(task.deadline);
-                          const barColor = task.extended ? "#f97316" : days !== null && days < 0 ? COLORS.danger : days !== null && days <= 7 ? COLORS.accent : COLORS.success;
+                          const barColor = task.status === "completado" ? COLORS.success : task.extended ? "#f97316" : days !== null && days < 0 ? COLORS.danger : days !== null && days <= 7 ? COLORS.accent : COLORS.success;
                           const taskStart = task.createdAt || today.toISOString().slice(0, 10);
                           const startPct = getPct(taskStart);
                           const barWidth = Math.max(1, pct - startPct);

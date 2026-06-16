@@ -41,16 +41,20 @@ function daysUntil(d) {
   return Math.ceil((target - today) / 86400000);
 }
 
-function DeadlineBadge({ date, extended }) {
+function DeadlineBadge({ date, extended, showDate }) {
   const days = daysUntil(date);
   if (days === null) return null;
+  const dateStr = formatDate(date);
   if (extended && days <= 0) {
     return (
-      <span style={{
-        fontSize: 10, fontWeight: 700, letterSpacing: 1,
-        color: "#f97316", border: "1px solid #f97316", borderRadius: 3,
-        padding: "1px 5px", textTransform: "uppercase"
-      }}>↗ Alargada</span>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+        {showDate && <span style={{ fontSize: 10, color: "#f97316", fontWeight: 600 }}>{dateStr}</span>}
+        <span style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: 1,
+          color: "#f97316", border: "1px solid #f97316", borderRadius: 3,
+          padding: "1px 5px", textTransform: "uppercase"
+        }}>↗ Alargada</span>
+      </span>
     );
   }
   let color = COLORS.success;
@@ -59,11 +63,14 @@ function DeadlineBadge({ date, extended }) {
   else if (days <= 5) color = COLORS.accent;
   const label = days < 0 ? `Hace ${Math.abs(days)}d` : days === 0 ? "Hoy" : `${days}d`;
   return (
-    <span style={{
-      fontSize: 10, fontWeight: 700, letterSpacing: 1,
-      color, border: `1px solid ${color}`, borderRadius: 3,
-      padding: "1px 5px", textTransform: "uppercase"
-    }}>{label}</span>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+      {showDate && <span style={{ fontSize: 10, color, fontWeight: 600 }}>{dateStr}</span>}
+      <span style={{
+        fontSize: 10, fontWeight: 700, letterSpacing: 1,
+        color, border: `1px solid ${color}`, borderRadius: 3,
+        padding: "1px 5px", textTransform: "uppercase"
+      }}>{label}</span>
+    </span>
   );
 }
 
@@ -767,7 +774,7 @@ export default function TeamHub() {
                   onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                   <span style={{ color: COLORS.muted, flexShrink: 0 }}>{t.person} →</span>
                   <span style={{ flex: 1 }}>{t.title}</span>
-                  <DeadlineBadge date={t.deadline} extended={t.extended} />
+                  <DeadlineBadge date={t.deadline} extended={t.extended} showDate={true} />
                   <span style={{ color: COLORS.muted, fontSize: 10, flexShrink: 0 }}>✏️</span>
                 </div>
               ))}

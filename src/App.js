@@ -351,6 +351,110 @@ export default function TeamHub() {
   const [expandedMember, setExpandedMember] = useState(null);
   const [duplicatesFound, setDuplicatesFound] = useState([]);
   const [pendingDuplicates, setPendingDuplicates] = useState([]);
+  const [ganttViewMode, setGanttViewMode] = useState("timeline"); // "timeline" | "week"
+  const [ganttFilterStart, setGanttFilterStart] = useState("");
+  const [ganttFilterEnd, setGanttFilterEnd] = useState("");
+  const [ganttSelectedWeek, setGanttSelectedWeek] = useState("");
+
+  function exportGantt() {
+    const today = new Date();
+    const dateStr = new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    const withDeadline = tasks
+      .filter(t => t.deadline && t.status !== "completado")
+      .sort((a, b) => a.deadline.localeCompare(b.deadline));
+
+    const byPerson = {};
+    withDeadline.forEach(t => {
+      if (!byPerson[t.person]) byPerson[t.person] = [];
+      byPerson[t.person].push(t);
+    });
+
+    const getStatusColor = (status) => ({
+      "en-curso": "#3b82f6", "pendiente": "#64748b",
+      "bloqueado": "#ef4444", "completado": "#22c55e"
+    }[status] || "#64748b");
+
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Gantt MHE — ${dateStr}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f8f9fa; color: #1a1a2e; }
+  .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white; padding: 32px 48px; }
+  .header h1 { font-size: 24px; font-weight: 700; }
+  .header .subtitle { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+  .content { padding: 24px 48px; }
+  .person-section { margin-bottom: 28px; }
+  .person-name { font-size: 13px; font-weight: 700; color: #1a1a2e; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid #e8c547; }
+  .task-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .task-label { width: 280px; flex-shrink: 0; font-size: 11px; color: #475569; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-container { flex: 1; height: 20px; background: #f1f5f9; border-radius: 4px; position: relative; overflow: hidden; }
+  .bar { height: 100%; border-radius: 4px; position: absolute; display: flex; align-items: center; padding: 0 6px; }
+  .bar-label { font-size: 9px; font-weight: 700; color: white; white-space: nowrap; overflow: hidden; }
+  .date-label { width: 60px; flex-shrink: 0; font-size: 10px; color: #64748b; text-align: right; }
+  .extended-badge { font-size: 9px; color: #f97316; font-weight: 700; }
+  .footer { background: #1a1a2e; color: #64748b; padding: 16px 48px; font-size: 11px; display: flex; justify-content: space-between; margin-top: 24px; }
+  @media print { body { background: white; } }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Gantt — Material Handling Engineering</h1>
+  <div class="subtitle">${dateStr} · Ebro Factory · ${withDeadline.length} tareas activas con deadline</div>
+</div>
+<div class="content">
+${Object.entries(byPerson).map(([person, pTasks]) => {
+  const minD = new Date(Math.min(...pTasks.map(t => new Date(t.deadline))));
+  const maxD = new Date(Math.max(...pTasks.map(t => new Date(t.deadline))));
+  const range = Math.max(1, (maxD - minD) / 86400000);
+  return `<div class="person-section">
+    <div class="person-name">${person}</div>
+    ${pTasks.map(t => {
+      const start = t.createdAt ? new Date(t.createdAt) : new Date(minD);
+      const end = new Date(t.deadline);
+      const totalRange = Math.max(1, (maxD - new Date(Math.min(...pTasks.map(t2 => new Date(t2.createdAt || t2.deadline))))) / 86400000);
+      const startOffset = Math.max(0, (start - new Date(Math.min(...pTasks.map(t2 => new Date(t2.createdAt || t2.deadline))))) / 86400000);
+      const width = Math.max(2, (end - start) / 86400000);
+      const leftPct = (startOffset / totalRange) * 100;
+      const widthPct = Math.min(100 - leftPct, (width / totalRange) * 100);
+      const color = getStatusColor(t.status);
+      const days = Math.ceil((end - new Date()) / 86400000);
+      const daysLabel = days < 0 ? `Hace ${Math.abs(days)}d` : days === 0 ? "Hoy" : `${days}d`;
+      const dateLabel = end.toLocaleDateString("es-ES", { day: "2-digit", month: "short" });
+      return `<div class="task-row">
+        <div class="task-label" title="${t.title}">${t.title}</div>
+        <div class="bar-container">
+          <div class="bar" style="left:${leftPct}%;width:${widthPct}%;background:${color}88;border:1px solid ${color}">
+            <div class="bar-label">${t.title.slice(0,30)}</div>
+          </div>
+        </div>
+        <div class="date-label">
+          ${dateLabel}<br>
+          <span style="color:${days <= 0 ? '#ef4444' : days <= 5 ? '#eab308' : '#22c55e'};font-weight:700;font-size:9px">${daysLabel}</span>
+          ${t.extended ? '<br><span class="extended-badge">↗ Alargada</span>' : ''}
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}).join('')}
+</div>
+<div class="footer">
+  <span>Team Hub · MHE · Ebro Factory</span>
+  <span>Generado el ${new Date().toLocaleString("es-ES")}</span>
+</div>
+</body>
+</html>`;
+
+    const blob = new Blob([html], { type: "text/html;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Gantt-MHE-${todayKey}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   function exportKPIReport() {
     const today = new Date();
@@ -1110,20 +1214,128 @@ export default function TeamHub() {
         {/* Tab: Gantt */}
         {activeTab === "gantt" && (
           <div>
+            {/* Controls */}
+            <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 4, background: COLORS.surface, borderRadius: 6, padding: 3, border: `1px solid ${COLORS.border}` }}>
+                {["timeline", "week"].map(mode => (
+                  <button key={mode} onClick={() => setGanttViewMode(mode)} style={{
+                    background: ganttViewMode === mode ? COLORS.accent : "transparent",
+                    color: ganttViewMode === mode ? "#000" : COLORS.muted,
+                    border: "none", borderRadius: 4, padding: "5px 14px",
+                    fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                    textTransform: "uppercase", letterSpacing: 1
+                  }}>{mode === "timeline" ? "Timeline" : "Por semana"}</button>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input type="date" value={ganttFilterStart} onChange={e => setGanttFilterStart(e.target.value)}
+                  style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 5, color: COLORS.text, padding: "6px 10px", fontSize: 12, outline: "none", fontFamily: "inherit" }} />
+                <span style={{ color: COLORS.muted, fontSize: 11 }}>→</span>
+                <input type="date" value={ganttFilterEnd} onChange={e => setGanttFilterEnd(e.target.value)}
+                  style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 5, color: COLORS.text, padding: "6px 10px", fontSize: 12, outline: "none", fontFamily: "inherit" }} />
+                {(ganttFilterStart || ganttFilterEnd) && (
+                  <button onClick={() => { setGanttFilterStart(""); setGanttFilterEnd(""); }}
+                    style={{ background: "transparent", border: "none", cursor: "pointer", color: COLORS.muted, fontSize: 12, fontFamily: "inherit" }}>✕ Limpiar</button>
+                )}
+              </div>
+              <div style={{ marginLeft: "auto" }}>
+                <Btn variant="ghost" style={{ fontSize: 11 }} onClick={exportGantt}>📊 Exportar Gantt</Btn>
+              </div>
+            </div>
+
             {(() => {
               const today = new Date();
               today.setHours(0,0,0,0);
-              const withDeadline = tasks
+
+              let withDeadline = tasks
                 .filter(t => t.deadline && t.status !== "completado")
                 .sort((a, b) => a.deadline.localeCompare(b.deadline));
 
+              // Apply date filter
+              if (ganttFilterStart) withDeadline = withDeadline.filter(t => t.deadline >= ganttFilterStart);
+              if (ganttFilterEnd) withDeadline = withDeadline.filter(t => t.deadline <= ganttFilterEnd);
+
               if (withDeadline.length === 0) return (
                 <div style={{ textAlign: "center", padding: 40, color: COLORS.muted, fontSize: 13 }}>
-                  No hay tareas con deadline. Añade fechas a tus tareas para verlas aquí.
+                  No hay tareas con deadline en el rango seleccionado.
                 </div>
               );
 
-              // Get date range
+              // ── WEEK VIEW ──────────────────────────────────────────────
+              if (ganttViewMode === "week") {
+                // Group tasks by ISO week
+                const getWeekKey = (dateStr) => {
+                  const d = new Date(dateStr + "T00:00:00");
+                  const day = d.getDay() || 7;
+                  d.setDate(d.getDate() + 4 - day);
+                  const yearStart = new Date(d.getFullYear(), 0, 1);
+                  const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+                  return `${d.getFullYear()}-W${String(week).padStart(2, "0")}`;
+                };
+                const getWeekLabel = (dateStr) => {
+                  const d = new Date(dateStr + "T00:00:00");
+                  const day = d.getDay() || 7;
+                  const monday = new Date(d);
+                  monday.setDate(d.getDate() - day + 1);
+                  const sunday = new Date(monday);
+                  sunday.setDate(monday.getDate() + 6);
+                  return `${monday.toLocaleDateString("es-ES", { day: "2-digit", month: "short" })} – ${sunday.toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}`;
+                };
+
+                const byWeek = {};
+                withDeadline.forEach(t => {
+                  const wk = getWeekKey(t.deadline);
+                  if (!byWeek[wk]) byWeek[wk] = [];
+                  byWeek[wk].push(t);
+                });
+
+                return (
+                  <div>
+                    {Object.entries(byWeek).sort(([a], [b]) => a.localeCompare(b)).map(([wk, wTasks]) => {
+                      const isCurrentWeek = getWeekKey(today.toISOString().slice(0, 10)) === wk;
+                      return (
+                        <div key={wk} style={{ marginBottom: 24 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: isCurrentWeek ? COLORS.accent : COLORS.muted, letterSpacing: 2, textTransform: "uppercase", fontWeight: isCurrentWeek ? 700 : 400 }}>
+                              {isCurrentWeek ? "📍 " : ""}{wk} · {getWeekLabel(wTasks[0].deadline)}
+                            </div>
+                            <div style={{ fontSize: 10, color: COLORS.muted }}>({wTasks.length} tarea{wTasks.length > 1 ? "s" : ""})</div>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 16, borderLeft: `2px solid ${isCurrentWeek ? COLORS.accent : COLORS.border}` }}>
+                            {wTasks.map(t => {
+                              const days = daysUntil(t.deadline);
+                              const barColor = t.extended ? "#f97316" : days !== null && days < 0 ? COLORS.danger : days !== null && days <= 5 ? COLORS.accent : COLORS.success;
+                              return (
+                                <div key={t.id} onClick={() => { setEditTarget(t); setModal("editTask"); }}
+                                  style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "10px 14px", cursor: "pointer", borderLeft: `3px solid ${barColor}` }}
+                                  onMouseEnter={e => e.currentTarget.style.borderColor = barColor}
+                                  onMouseLeave={e => e.currentTarget.style.borderColor = COLORS.border}>
+                                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                                    <div>
+                                      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 3 }}>{t.title}</div>
+                                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                        <span style={{ fontSize: 11, color: COLORS.accent, fontWeight: 600 }}>{t.person}</span>
+                                        <Tag label={STATUS_CONFIG[t.status]?.label} color={STATUS_CONFIG[t.status]?.color} />
+                                        <Tag label={PRIORITY_CONFIG[t.priority]?.label} color={PRIORITY_CONFIG[t.priority]?.color} />
+                                      </div>
+                                    </div>
+                                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                                      <div style={{ fontSize: 12, color: barColor, fontWeight: 700 }}>{formatDate(t.deadline)}</div>
+                                      <DeadlineBadge date={t.deadline} extended={t.extended} showDate={false} />
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              }
+
+              // ── TIMELINE VIEW ──────────────────────────────────────────
               const minDate = new Date(withDeadline[0].deadline + "T00:00:00");
               const maxDate = new Date(withDeadline[withDeadline.length-1].deadline + "T00:00:00");
               const startDate = new Date(Math.min(today.getTime(), minDate.getTime()));
@@ -1131,10 +1343,8 @@ export default function TeamHub() {
               const endDate = new Date(maxDate);
               endDate.setMonth(endDate.getMonth() + 1);
               endDate.setDate(0);
-
               const totalDays = Math.ceil((endDate - startDate) / 86400000) + 1;
 
-              // Generate months for header
               const months = [];
               let cur = new Date(startDate);
               while (cur <= endDate) {
@@ -1160,7 +1370,6 @@ export default function TeamHub() {
                 return Math.min(100, Math.max(0, (offset / totalDays) * 100));
               }
 
-              // Group by person
               const byPerson = {};
               withDeadline.forEach(t => {
                 if (!byPerson[t.person]) byPerson[t.person] = [];
@@ -1170,7 +1379,6 @@ export default function TeamHub() {
               return (
                 <div style={{ overflowX: "auto" }}>
                   <div style={{ minWidth: 600 }}>
-                    {/* Month header */}
                     <div style={{ display: "flex", marginBottom: 2, marginLeft: 160 }}>
                       {months.map((m, i) => (
                         <div key={i} style={{
@@ -1183,44 +1391,35 @@ export default function TeamHub() {
                         }}>{m.label}</div>
                       ))}
                     </div>
-
-                    {/* Today line + tasks by person */}
                     {Object.entries(byPerson).map(([person, pTasks]) => (
                       <div key={person} style={{ marginBottom: 16 }}>
-                        <div style={{ fontSize: 11, color: COLORS.accent, fontWeight: 700, marginBottom: 6, letterSpacing: 0.5 }}>{person}</div>
+                        <div style={{ fontSize: 11, color: COLORS.accent, fontWeight: 700, marginBottom: 6 }}>{person}</div>
                         {pTasks.map(task => {
                           const pct = getPct(task.deadline);
                           const days = daysUntil(task.deadline);
-                          const barColor = days < 0 ? COLORS.danger : days <= 3 ? COLORS.danger : days <= 7 ? COLORS.accent : COLORS.success;
-                          // Bar starts from task creation date or start, ends at deadline
-                          // Use createdAt as bar start, fallback to today if missing
-                          const taskStart = task.createdAt || new Date().toISOString().slice(0, 10);
+                          const barColor = task.extended ? "#f97316" : days !== null && days < 0 ? COLORS.danger : days !== null && days <= 7 ? COLORS.accent : COLORS.success;
+                          const taskStart = task.createdAt || today.toISOString().slice(0, 10);
                           const startPct = getPct(taskStart);
                           const barWidth = Math.max(1, pct - startPct);
                           return (
                             <div key={task.id} style={{ display: "flex", alignItems: "center", marginBottom: 6, gap: 8 }}>
-                              <div style={{ width: 152, flexShrink: 0, fontSize: 11, color: COLORS.text, textAlign: "right", paddingRight: 8, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={task.title}>
+                              <div onClick={() => { setEditTarget(task); setModal("editTask"); }}
+                                style={{ width: 152, flexShrink: 0, fontSize: 11, color: COLORS.text, textAlign: "right", paddingRight: 8, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer" }}
+                                title={task.title}>
                                 {task.title.length > 22 ? task.title.slice(0,22) + "…" : task.title}
                               </div>
                               <div style={{ flex: 1, position: "relative", height: 24, background: COLORS.surface, borderRadius: 4, border: `1px solid ${COLORS.border}` }}>
-                                {/* Today marker */}
                                 <div style={{ position: "absolute", left: `${todayPct}%`, top: 0, bottom: 0, width: 2, background: COLORS.accent, zIndex: 2, opacity: 0.8 }} />
-                                {/* Task bar */}
-                                <div style={{
-                                  position: "absolute",
-                                  left: `${startPct}%`,
-                                  width: `${barWidth}%`,
-                                  top: 4, bottom: 4,
-                                  background: barColor + "55",
-                                  border: `1px solid ${barColor}`,
-                                  borderRadius: 3,
-                                  display: "flex", alignItems: "center", justifyContent: "flex-end",
-                                  paddingRight: 4, overflow: "hidden"
+                                <div onClick={() => { setEditTarget(task); setModal("editTask"); }} style={{
+                                  position: "absolute", left: `${startPct}%`, width: `${barWidth}%`,
+                                  top: 4, bottom: 4, background: barColor + "55", border: `1px solid ${barColor}`,
+                                  borderRadius: 3, display: "flex", alignItems: "center", justifyContent: "flex-end",
+                                  paddingRight: 4, overflow: "hidden", cursor: "pointer"
                                 }}>
                                   <div style={{ width: 6, height: 6, borderRadius: "50%", background: barColor, flexShrink: 0 }} />
                                 </div>
                               </div>
-                              <div style={{ width: 48, flexShrink: 0, fontSize: 10, color: barColor, fontWeight: 700, textAlign: "left" }}>
+                              <div style={{ width: 48, flexShrink: 0, fontSize: 10, color: barColor, fontWeight: 700 }}>
                                 {formatDate(task.deadline)}
                               </div>
                             </div>
@@ -1228,8 +1427,6 @@ export default function TeamHub() {
                         })}
                       </div>
                     ))}
-
-                    {/* Legend */}
                     <div style={{ display: "flex", gap: 16, marginTop: 16, paddingTop: 12, borderTop: `1px solid ${COLORS.border}`, flexWrap: "wrap" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: COLORS.muted }}>
                         <div style={{ width: 16, height: 2, background: COLORS.accent }} /> Hoy
@@ -1241,7 +1438,10 @@ export default function TeamHub() {
                         <div style={{ width: 12, height: 12, borderRadius: 2, background: COLORS.accent + "55", border: `1px solid ${COLORS.accent}` }} /> ≤7 días
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: COLORS.muted }}>
-                        <div style={{ width: 12, height: 12, borderRadius: 2, background: COLORS.danger + "55", border: `1px solid ${COLORS.danger}` }} /> Urgente/Vencida
+                        <div style={{ width: 12, height: 12, borderRadius: 2, background: COLORS.danger + "55", border: `1px solid ${COLORS.danger}` }} /> Vencida
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: COLORS.muted }}>
+                        <div style={{ width: 12, height: 12, borderRadius: 2, background: "#f9731655", border: "1px solid #f97316" }} /> Alargada
                       </div>
                     </div>
                   </div>
@@ -1250,7 +1450,6 @@ export default function TeamHub() {
             })()}
           </div>
         )}
-
         {/* Tab: KPIs */}
         {activeTab === "kpis" && (
           <div>

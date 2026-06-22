@@ -751,36 +751,145 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
     {id:82,person:"Adriana Murillo",title:"[MONCADA] Presencia descarga S700 en Moncada - toma de datos",priority:"alta",status:"pendiente",deadline:"2026-05-27",notes:"Toma de medidas cajas, condiciones packaging. Preparar 15 coches del lote de 60",createdAt:"2026-05-20"},
   ];
 
-  // Load from storage
+  const SUPABASE_URL = "https://hrgbvcuzotmowrbhdmdd.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_cJV4BTte-61p30_tJccdCw_tPV-dm69";
+
+  const sbFetch = async (path, opts = {}) => {
+    const res = await fetch(SUPABASE_URL + "/rest/v1" + path, {
+      ...opts,
+      headers: {
+        "apikey": SUPABASE_KEY,
+        "Authorization": "Bearer " + SUPABASE_KEY,
+        "Content-Type": "application/json",
+        "Prefer": opts.prefer || "return=representation",
+        ...(opts.headers || {})
+      }
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(err);
+    }
+    const text = await res.text();
+    return text ? JSON.parse(text) : [];
+  };
+
+  // Load from Supabase
   useEffect(() => {
-    try {
-      const m = localStorage.getItem("hub-members");
-      setMembers(m ? JSON.parse(m) : INITIAL_MEMBERS);
-      if (!m) localStorage.setItem("hub-members", JSON.stringify(INITIAL_MEMBERS));
-    } catch(e) { setMembers(INITIAL_MEMBERS); }
-    try {
-      const t = localStorage.getItem("hub-tasks");
-      setTasks(t ? JSON.parse(t) : INITIAL_TASKS);
-      if (!t) localStorage.setItem("hub-tasks", JSON.stringify(INITIAL_TASKS));
-    } catch(e) { setTasks(INITIAL_TASKS); }
-    try {
-      const n = localStorage.getItem("hub-meeting-notes");
-      if (n) setMeetingNotes(JSON.parse(n));
-    } catch(e) {}
-    setLoaded(true);
+    async function load() {
+      try {
+        // Load members
+        const mRows = await sbFetch("/members?order=id");
+        if (mRows.length > 0) {
+          setMembers(mRows.map(r => r.name));
+        } else {
+          // First time - seed with initial data
+          await Promise.all(INITIAL_MEMBERS.map(name =>
+            sbFetch("/members", { method: "POST", body: JSON.stringify({ name }) })
+          ));
+          setMembers(INITIAL_MEMBERS);
+        }
+      } catch(e) {
+        console.error("Error loading members:", e);
+        setMembers(INITIAL_MEMBERS);
+      }
+
+      try {
+        // Load tasks
+        const tRows = await sbFetch("/tasks?order=id");
+        if (tRows.length > 0) {
+          const mapped = tRows.map(r => ({
+            id: r.id, person: r.person, title: r.title,
+            status: r.status, priority: r.priority,
+            deadline: r.deadline || "", notes: r.notes || "",
+            createdAt: r.created_at_date || "",
+            extended: r.extended || false,
+            originalDeadline: r.original_deadline || "",
+            history: r.history || []
+          }));
+          setTasks(mapped);
+        } else {
+          // First time - seed with initial tasks
+          await Promise.all(INITIAL_TASKS.map(t =>
+            sbFetch("/tasks", { method: "POST", body: JSON.stringify({
+              id: t.id, person: t.person, title: t.title,
+              status: t.status, priority: t.priority,
+              deadline: t.deadline || "", notes: t.notes || "",
+              created_at_date: t.createdAt || "",
+              extended: false, original_deadline: "",
+              history: t.history || []
+            }) })
+          ));
+          setTasks(INITIAL_TASKS);
+        }
+      } catch(e) {
+        console.error("Error loading tasks:", e);
+        setTasks(INITIAL_TASKS);
+      }
+
+      try {
+        const nRows = await sbFetch("/meeting_notes?order=id");
+        const notesObj = {};
+        nRows.forEach(r => { notesObj[r.date] = r.content; });
+        setMeetingNotes(notesObj);
+      } catch(e) {
+        console.error("Error loading notes:", e);
+      }
+
+      setLoaded(true);
+    }
+    load();
   }, []);
 
-  function saveMembers(m) {
-    setMembers(m);
-    localStorage.setItem("hub-members", JSON.stringify(m));
+  async function saveMembers(newMembers) {
+    setMembers(newMembers);
+    // Sync to Supabase - delete all and reinsert
+    try {
+      await sbFetch("/members?id=gte.0", { method: "DELETE", prefer: "return=minimal" });
+      await Promise.all(newMembers.map(name =>
+        sbFetch("/members", { method: "POST", body: JSON.stringify({ name }) })
+      ));
+    } catch(e) { console.error("Error saving members:", e); }
   }
-  function saveTasks(t) {
-    setTasks(t);
-    localStorage.setItem("hub-tasks", JSON.stringify(t));
+
+  async function saveTasks(newTasks) {
+    setTasks(newTasks);
+    try {
+      // Upsert all tasks
+      const rows = newTasks.map(t => ({
+        id: t.id, person: t.person, title: t.title,
+        status: t.status, priority: t.priority,
+        deadline: t.deadline || "", notes: t.notes || "",
+        created_at_date: t.createdAt || "",
+        extended: t.extended || false,
+        original_deadline: t.originalDeadline || "",
+        history: t.history || []
+      }));
+      await sbFetch("/tasks?on_conflict=id", {
+        method: "POST",
+        prefer: "resolution=merge-duplicates,return=minimal",
+        body: JSON.stringify(rows)
+      });
+      // Delete removed tasks
+      const ids = newTasks.map(t => t.id);
+      const existing = await sbFetch("/tasks?select=id");
+      const toDelete = existing.filter(r => !ids.includes(r.id));
+      await Promise.all(toDelete.map(r =>
+        sbFetch(`/tasks?id=eq.${r.id}`, { method: "DELETE", prefer: "return=minimal" })
+      ));
+    } catch(e) { console.error("Error saving tasks:", e); }
   }
-  function saveMeetingNotes(n) {
-    setMeetingNotes(n);
-    localStorage.setItem("hub-meeting-notes", JSON.stringify(n));
+
+  async function saveMeetingNotes(newNotes) {
+    setMeetingNotes(newNotes);
+    try {
+      await Promise.all(Object.entries(newNotes).map(([date, content]) =>
+        sbFetch("/meeting_notes?on_conflict=date", {
+          method: "POST",
+          prefer: "resolution=merge-duplicates,return=minimal",
+          body: JSON.stringify({ date, content })
+        })
+      ));
+    } catch(e) { console.error("Error saving notes:", e); }
   }
 
   function addMember(name) {

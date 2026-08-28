@@ -1280,7 +1280,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
             {(() => {
               const activeTasks = tasks.filter(t => t.status !== "completado");
 
-              function saveNote() {
+              function saveDayNote() {
                 if (!noteText.trim()) return;
                 const today = new Date().toISOString().slice(0, 10);
                 const prefix = noteType === "reunion" ? `[Reunión ${today}]` : `[${today}]`;
@@ -1355,7 +1355,7 @@ ${points}` : `${prefix} ${noteText}`;
                   </div>
 
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <Btn onClick={saveNote} disabled={!noteText.trim()}>
+                    <Btn onClick={saveDayNote} disabled={!noteText.trim()}>
                       {noteSaved ? "✅ Guardado" : noteType === "reunion" ? "Guardar reunión" : "Guardar nota"}
                     </Btn>
                     {noteTask && <span style={{ fontSize: 11, color: COLORS.muted }}>Se añadirá a las notas de la tarea seleccionada</span>}

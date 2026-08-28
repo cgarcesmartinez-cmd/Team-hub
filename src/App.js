@@ -1,5 +1,5 @@
 import React from "react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 
 const COLORS = {
   bg: "#0f0f0f",
@@ -183,138 +183,6 @@ function TaskForm({ members, initial, onSave, onCancel }) {
   );
 }
 
-// ─── Meeting Notes ──────────────────────────────────────────────────────────
-
-function MeetingNotes({ notes, onSave, members, tasks, onAddTasks }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(notes);
-  const [extracting, setExtracting] = useState(false);
-  const [extracted, setExtracted] = useState(null);
-  const [extractedUpdates, setExtractedUpdates] = useState([]);
-  const [extractError, setExtractError] = useState("");
-  const today = new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
-
-  async function extractTasks() {
-    const text = notes || draft;
-    if (!text.trim()) return;
-    setExtracting(true);
-    setExtractError("");
-    setExtracted(null);
-    try {
-      const existingTasks = tasks.filter(t => t.status !== "completado").map(t => ({ id: t.id, title: t.title, person: t.person }));
-      const response = await fetch("/api/extract", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          notes: text,
-          members: members.join(", "),
-          existingTasks: JSON.stringify(existingTasks)
-        })
-      });
-      const data = await response.json();
-      setExtracted(data.tasks || []);
-      setExtractedUpdates(data.updates || []);
-    } catch(e) {
-      setExtractError("Error al extraer tareas. Inténtalo de nuevo.");
-    }
-    setExtracting(false);
-  }
-
-  function confirmTasks() {
-    const valid = extracted.filter(t => t.title && t.person);
-    onAddTasks(valid, extractedUpdates);
-    setExtracted(null);
-    setExtractedUpdates([]);
-  }
-
-  return (
-    <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 20, marginBottom: 20 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-        <div>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: COLORS.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 3 }}>Morning meeting</div>
-          <div style={{ fontSize: 13, color: COLORS.muted, textTransform: "capitalize" }}>{today}</div>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {notes && !editing && (
-            <Btn variant="ghost" style={{ fontSize: 11, padding: "6px 12px" }} onClick={extractTasks} disabled={extracting}>
-              {extracting ? "⏳ Analizando..." : "🤖 Extraer tareas"}
-            </Btn>
-          )}
-          <Btn variant="ghost" style={{ fontSize: 11, padding: "6px 12px" }} onClick={() => { setEditing(!editing); setDraft(notes); setExtracted(null); setExtractedUpdates([]); }}>
-            {editing ? "Cancelar" : "✏️ Editar"}
-          </Btn>
-        </div>
-      </div>
-
-      {editing ? (
-        <>
-          <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={6}
-            placeholder="Apuntes del meeting de hoy..."
-            style={{ width: "100%", background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 5, color: COLORS.text, padding: "10px 12px", fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit", resize: "vertical" }} />
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10, gap: 8 }}>
-            <Btn variant="ghost" style={{ fontSize: 11 }} onClick={() => { onSave(draft); setEditing(false); }}>Guardar notas</Btn>
-            <Btn onClick={() => { onSave(draft); setEditing(false); setTimeout(extractTasks, 300); }}>Guardar y extraer tareas</Btn>
-          </div>
-        </>
-      ) : (
-        <div style={{ fontSize: 13, color: notes ? COLORS.text : COLORS.muted, lineHeight: 1.7, whiteSpace: "pre-wrap", minHeight: 48 }}>
-          {notes || "Sin notas de hoy. Pulsa editar para añadir..."}
-        </div>
-      )}
-
-      {extractError && (
-        <div style={{ marginTop: 12, fontSize: 12, color: COLORS.danger }}>{extractError}</div>
-      )}
-
-      {((extracted && extracted.length > 0) || (extractedUpdates && extractedUpdates.length > 0)) && (
-        <div style={{ marginTop: 16, borderTop: `1px solid ${COLORS.border}`, paddingTop: 16 }}>
-          {extractedUpdates && extractedUpdates.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, color: COLORS.info, letterSpacing: 2, textTransform: "uppercase", marginBottom: 10, fontFamily: "'DM Mono', monospace" }}>
-                💬 Actualizaciones detectadas ({extractedUpdates.length})
-              </div>
-              {extractedUpdates.map((u, i) => (
-                <div key={i} style={{ background: COLORS.bg, border: `1px solid ${COLORS.info}33`, borderRadius: 6, padding: "10px 14px", marginBottom: 8, borderLeft: `3px solid ${COLORS.info}` }}>
-                  <div style={{ fontSize: 11, color: COLORS.info, marginBottom: 4, fontWeight: 600 }}>→ {u.taskTitle}</div>
-                  <div style={{ fontSize: 13, color: COLORS.text }}>{u.comment}</div>
-                </div>
-              ))}
-            </div>
-          )}
-          {extracted && extracted.length > 0 && (
-            <div>
-            <div style={{ fontSize: 11, color: COLORS.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12, fontFamily: "'DM Mono', monospace" }}>
-              🤖 Tareas nuevas ({extracted.length})
-            </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
-            {extracted.map((t, i) => (
-              <div key={i} style={{ background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 6, padding: "10px 14px" }}>
-                <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>{t.title}</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                  {t.person && <span style={{ fontSize: 11, color: COLORS.accent, fontWeight: 600 }}>{t.person}</span>}
-                  {t.priority && <Tag label={PRIORITY_CONFIG[t.priority]?.label || t.priority} color={PRIORITY_CONFIG[t.priority]?.color || COLORS.muted} />}
-                  {t.status && <Tag label={STATUS_CONFIG[t.status]?.label || t.status} color={STATUS_CONFIG[t.status]?.color || COLORS.muted} />}
-                  {t.deadline && <span style={{ fontSize: 11, color: COLORS.muted }}>{formatDate(t.deadline)}</span>}
-                </div>
-                {t.notes && <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 4 }}>{t.notes}</div>}
-              </div>
-            ))}
-          </div>
-            </div>
-          )}
-          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-            <Btn variant="ghost" style={{ fontSize: 11 }} onClick={() => { setExtracted(null); setExtractedUpdates([]); }}>Descartar</Btn>
-            <Btn onClick={confirmTasks}>✅ Aplicar al hub</Btn>
-          </div>
-        </div>
-      )}
-
-      {extracted && extracted.length === 0 && extractedUpdates && extractedUpdates.length === 0 && (
-        <div style={{ marginTop: 12, fontSize: 12, color: COLORS.muted }}>No se encontraron tareas ni actualizaciones en las notas.</div>
-      )}
-    </div>
-  );
-}
 
 // ─── Member Form ────────────────────────────────────────────────────────────
 
@@ -1114,7 +982,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                     saveTasks([...tasks, ...withIds]);
                     setDuplicatesFound([]);
                     setPendingDuplicates([]);
-                  }} style={{ fontSize: 11 }}>✅ Añadir tarea igualmente</Btn>}
+                  }} style={{ fontSize: 11 }}>✅ Añadir tarea igualmente</Btn>
                   <Btn variant="ghost" onClick={() => { setDuplicatesFound([]); setPendingDuplicates([]); }} style={{ fontSize: 11 }}>✕ Cerrar</Btn>
                 </div>
               </div>
@@ -1280,7 +1148,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
             {(() => {
               const activeTasks = tasks.filter(t => t.status !== "completado");
 
-              function saveDayNote() {
+              const saveDayNote = () => {
                 if (!noteText.trim()) return;
                 const today = new Date().toISOString().slice(0, 10);
                 const prefix = noteType === "reunion" ? `[Reunión ${today}]` : `[${today}]`;
@@ -1332,9 +1200,7 @@ ${points}` : `${prefix} ${noteText}`;
                     <div style={{ marginBottom: 12 }}>
                       <div style={{ fontSize: 11, color: COLORS.muted, marginBottom: 5, letterSpacing: 1, textTransform: "uppercase" }}>Puntos clave (uno por línea)</div>
                       <textarea value={meetingPoints} onChange={e => setMeetingPoints(e.target.value)} rows={3}
-                        placeholder={"- Decisión tomada
-- Acción pendiente
-- Siguiente paso"}
+                        placeholder={"- Decisión tomada\n- Acción pendiente\n- Siguiente paso"}
                         style={{ width: "100%", background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 5, color: COLORS.text, padding: "8px 12px", fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit", resize: "vertical" }} />
                     </div>
                   )}

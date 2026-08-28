@@ -353,7 +353,12 @@ export default function TeamHub() {
   const [pendingDuplicates, setPendingDuplicates] = useState([]);
   const [ganttViewMode, setGanttViewMode] = useState("timeline");
   const [quickNoteTaskId, setQuickNoteTaskId] = useState(null);
-  const [quickNoteText, setQuickNoteText] = useState(""); // "timeline" | "week"
+  const [quickNoteText, setQuickNoteText] = useState("");
+  const [noteTask, setNoteTask] = useState("");
+  const [noteText, setNoteText] = useState("");
+  const [noteType, setNoteType] = useState("nota");
+  const [meetingPoints, setMeetingPoints] = useState("");
+  const [noteSaved, setNoteSaved] = useState(false); // "timeline" | "week"
   const [ganttFilterStart, setGanttFilterStart] = useState("");
   const [ganttFilterEnd, setGanttFilterEnd] = useState("");
   const [ganttSelectedWeek, setGanttSelectedWeek] = useState("");
@@ -1273,42 +1278,31 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
 
             {/* Quick note form */}
             {(() => {
-              const [noteTask, setNoteTask] = React.useState("");
-              const [noteText, setNoteText] = React.useState("");
-              const [noteType, setNoteType] = React.useState("nota"); // "nota" | "reunion"
-              const [meetingPoints, setMeetingPoints] = React.useState("");
-              const [saved, setSaved] = React.useState(false);
-
               const activeTasks = tasks.filter(t => t.status !== "completado");
 
               function saveNote() {
                 if (!noteText.trim()) return;
                 const today = new Date().toISOString().slice(0, 10);
                 const prefix = noteType === "reunion" ? `[Reunión ${today}]` : `[${today}]`;
-                const fullNote = meetingPoints.trim()
-                  ? `${prefix} ${noteText}
-• ${meetingPoints.split("
-").filter(Boolean).join("
-• ")}`
-                  : `${prefix} ${noteText}`;
-
+                const points = meetingPoints.trim() ? meetingPoints.split("
+").filter(Boolean).map(p => "• " + p).join("
+") : "";
+                const fullNote = points ? `${prefix} ${noteText}
+${points}` : `${prefix} ${noteText}`;
                 if (noteTask) {
-                  // Link to specific task
-                  const updated = tasks.map(t => t.id === parseInt(noteTask) || t.id === noteTask
+                  const taskId = isNaN(noteTask) ? noteTask : parseInt(noteTask);
+                  const updated = tasks.map(t => String(t.id) === String(taskId)
                     ? { ...t, notes: t.notes ? t.notes + "
 " + fullNote : fullNote }
                     : t);
                   saveTasks(updated);
                 }
-
-                // Also save to daily notes
                 const updatedNotes = { ...meetingNotes, [today]: meetingNotes[today] ? meetingNotes[today] + "
 
 " + fullNote : fullNote };
                 saveMeetingNotes(updatedNotes);
-
-                setNoteText(""); setNoteTask(""); setMeetingPoints(""); setSaved(true);
-                setTimeout(() => setSaved(false), 2000);
+                setNoteText(""); setNoteTask(""); setMeetingPoints(""); setNoteSaved(true);
+                setTimeout(() => setNoteSaved(false), 2000);
               }
 
               return (
@@ -1362,7 +1356,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
 
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <Btn onClick={saveNote} disabled={!noteText.trim()}>
-                      {saved ? "✅ Guardado" : noteType === "reunion" ? "Guardar reunión" : "Guardar nota"}
+                      {noteSaved ? "✅ Guardado" : noteType === "reunion" ? "Guardar reunión" : "Guardar nota"}
                     </Btn>
                     {noteTask && <span style={{ fontSize: 11, color: COLORS.muted }}>Se añadirá a las notas de la tarea seleccionada</span>}
                   </div>

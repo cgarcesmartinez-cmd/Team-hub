@@ -896,7 +896,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
               <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.danger, marginBottom: 6, letterSpacing: 1, textTransform: "uppercase" }}>
                 {urgentTasks.length} tarea{urgentTasks.length > 1 ? "s" : ""} urgente{urgentTasks.length > 1 ? "s" : ""}
               </div>
-              {urgentTasks.map(t => (
+              {urgentTasks.map(t => (<>
                 <div key={t.id} onClick={() => { setEditTarget(t); setModal("editTask"); }}
                   style={{ fontSize: 12, color: COLORS.text, marginBottom: 4, display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: "3px 6px", borderRadius: 4, transition: "background .15s" }}
                   onMouseEnter={e => e.currentTarget.style.background = COLORS.border + "44"}
@@ -915,8 +915,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                         if (e.key === "Enter" && quickNoteText.trim()) {
                           const today = new Date().toISOString().slice(0, 10);
                           const updated = tasks.map(task => task.id === t.id
-                            ? { ...task, notes: task.notes ? task.notes + "
-" + today + ": " + quickNoteText : today + ": " + quickNoteText }
+                            ? { ...task, notes: task.notes ? task.notes + "\n" + today + ": " + quickNoteText : today + ": " + quickNoteText }
                             : task);
                           saveTasks(updated);
                           setQuickNoteTaskId(null);
@@ -929,8 +928,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                       if (quickNoteText.trim()) {
                         const today = new Date().toISOString().slice(0, 10);
                         const updated = tasks.map(task => task.id === t.id
-                          ? { ...task, notes: task.notes ? task.notes + "
-" + today + ": " + quickNoteText : today + ": " + quickNoteText }
+                          ? { ...task, notes: task.notes ? task.notes + "\n" + today + ": " + quickNoteText : today + ": " + quickNoteText }
                           : task);
                         saveTasks(updated);
                       }
@@ -938,6 +936,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                     }} style={{ background: COLORS.accent, border: "none", borderRadius: 4, color: "#000", padding: "4px 10px", fontSize: 11, cursor: "pointer", fontWeight: 700 }}>OK</button>
                   </div>
                 )}
+              </>
               ))}
             </div>
           </div>
@@ -982,7 +981,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                     saveTasks([...tasks, ...withIds]);
                     setDuplicatesFound([]);
                     setPendingDuplicates([]);
-                  }} style={{ fontSize: 11 }}>✅ Añadir tarea igualmente</Btn>
+                  }} style={{ fontSize: 11 }}>✅ Añadir tarea igualmente</Btn>}
                   <Btn variant="ghost" onClick={() => { setDuplicatesFound([]); setPendingDuplicates([]); }} style={{ fontSize: 11 }}>✕ Cerrar</Btn>
                 </div>
               </div>

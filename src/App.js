@@ -1152,22 +1152,16 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                 if (!noteText.trim()) return;
                 const today = new Date().toISOString().slice(0, 10);
                 const prefix = noteType === "reunion" ? `[Reunión ${today}]` : `[${today}]`;
-                const points = meetingPoints.trim() ? meetingPoints.split("
-").filter(Boolean).map(p => "• " + p).join("
-") : "";
-                const fullNote = points ? `${prefix} ${noteText}
-${points}` : `${prefix} ${noteText}`;
+                const points = meetingPoints.trim() ? meetingPoints.split("\n").filter(Boolean).map(p => "• " + p).join("\n") : "";
+                const fullNote = points ? `${prefix} ${noteText}\n${points}` : `${prefix} ${noteText}`;
                 if (noteTask) {
                   const taskId = isNaN(noteTask) ? noteTask : parseInt(noteTask);
                   const updated = tasks.map(t => String(t.id) === String(taskId)
-                    ? { ...t, notes: t.notes ? t.notes + "
-" + fullNote : fullNote }
+                    ? { ...t, notes: t.notes ? t.notes + "\n" + fullNote : fullNote }
                     : t);
                   saveTasks(updated);
                 }
-                const updatedNotes = { ...meetingNotes, [today]: meetingNotes[today] ? meetingNotes[today] + "
-
-" + fullNote : fullNote };
+                const updatedNotes = { ...meetingNotes, [today]: meetingNotes[today] ? meetingNotes[today] + "\n\n" + fullNote : fullNote };
                 saveMeetingNotes(updatedNotes);
                 setNoteText(""); setNoteTask(""); setMeetingPoints(""); setNoteSaved(true);
                 setTimeout(() => setNoteSaved(false), 2000);

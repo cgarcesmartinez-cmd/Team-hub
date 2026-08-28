@@ -351,7 +351,9 @@ export default function TeamHub() {
   const [expandedMember, setExpandedMember] = useState(null);
   const [duplicatesFound, setDuplicatesFound] = useState([]);
   const [pendingDuplicates, setPendingDuplicates] = useState([]);
-  const [ganttViewMode, setGanttViewMode] = useState("timeline"); // "timeline" | "week"
+  const [ganttViewMode, setGanttViewMode] = useState("timeline");
+  const [quickNoteTaskId, setQuickNoteTaskId] = useState(null);
+  const [quickNoteText, setQuickNoteText] = useState(""); // "timeline" | "week"
   const [ganttFilterStart, setGanttFilterStart] = useState("");
   const [ganttFilterEnd, setGanttFilterEnd] = useState("");
   const [ganttSelectedWeek, setGanttSelectedWeek] = useState("");
@@ -898,6 +900,32 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
   }
 
   function addTask(form) {
+    // Check for duplicates before adding
+    const stopWords = new Set(["debe","hacer","para","tarea","que","con","los","las","del","una","por","sus","nos","hay","son","más"]);
+    const newTitle = (form.title || "").toLowerCase();
+    const newPerson = (form.person || "").toLowerCase();
+    const newWords = newTitle.split(" ").filter(w => w.length > 3 && !stopWords.has(w));
+    
+    if (newWords.length >= 2) {
+      const dup = tasks.find(existing => {
+        const exPerson = existing.person.toLowerCase();
+        const personMatch = newPerson && exPerson &&
+          newPerson.split(" ").some(p => p.length > 3 && exPerson.includes(p));
+        if (!personMatch) return false;
+        const exTitle = existing.title.toLowerCase();
+        const exWords = exTitle.split(" ").filter(w => w.length > 3 && !stopWords.has(w));
+        if (exWords.length < 2) return false;
+        const fwd = newWords.filter(w => exTitle.includes(w)).length;
+        const bwd = exWords.filter(w => newTitle.includes(w)).length;
+        return (fwd / newWords.length) >= 0.6 && (bwd / exWords.length) >= 0.6;
+      });
+      if (dup) {
+        setDuplicatesFound([{ new: form.title, existing: dup.title }]);
+        setPendingDuplicates([{ ...form, id: Date.now(), createdAt: todayKey }]);
+        setModal(null);
+        return;
+      }
+    }
     saveTasks([...tasks, { ...form, id: Date.now(), createdAt: todayKey }]);
     setModal(null);
   }
@@ -939,6 +967,16 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
           !(t.notes||"").toLowerCase().includes(q)) return false;
     }
     return true;
+  });
+
+  // Tasks with no activity in 7+ days (no history change, no status change)
+  const staleTasks = tasks.filter(t => {
+    if (t.status === "completado") return false;
+    const lastActivity = t.history && t.history.length > 0
+      ? t.history[t.history.length - 1].date
+      : t.createdAt || "2026-01-01";
+    const daysSinceActivity = daysUntil(lastActivity);
+    return daysSinceActivity !== null && daysSinceActivity <= -7;
   });
 
   const urgentTasks = tasks.filter(t => {
@@ -993,8 +1031,40 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                   <span style={{ color: COLORS.muted, flexShrink: 0 }}>{t.person} →</span>
                   <span style={{ flex: 1 }}>{t.title}</span>
                   <DeadlineBadge date={t.deadline} extended={t.extended} showDate={true} />
-                  <span style={{ color: COLORS.muted, fontSize: 10, flexShrink: 0 }}>✏️</span>
+                  <span onClick={e => { e.stopPropagation(); setQuickNoteTaskId(quickNoteTaskId === t.id ? null : t.id); setQuickNoteText(""); }}
+                    style={{ color: COLORS.muted, fontSize: 10, flexShrink: 0, cursor: "pointer", padding: "2px 4px" }}>📝</span>
                 </div>
+                {quickNoteTaskId === t.id && (
+                  <div style={{ display: "flex", gap: 6, marginTop: 4, marginLeft: 6 }} onClick={e => e.stopPropagation()}>
+                    <input autoFocus value={quickNoteText} onChange={e => setQuickNoteText(e.target.value)}
+                      placeholder="Añadir nota rápida..."
+                      onKeyDown={e => {
+                        if (e.key === "Enter" && quickNoteText.trim()) {
+                          const today = new Date().toISOString().slice(0, 10);
+                          const updated = tasks.map(task => task.id === t.id
+                            ? { ...task, notes: task.notes ? task.notes + "
+" + today + ": " + quickNoteText : today + ": " + quickNoteText }
+                            : task);
+                          saveTasks(updated);
+                          setQuickNoteTaskId(null);
+                          setQuickNoteText("");
+                        }
+                        if (e.key === "Escape") { setQuickNoteTaskId(null); setQuickNoteText(""); }
+                      }}
+                      style={{ flex: 1, background: COLORS.bg, border: `1px solid ${COLORS.accent}`, borderRadius: 4, color: COLORS.text, padding: "4px 8px", fontSize: 11, outline: "none", fontFamily: "inherit" }} />
+                    <button onClick={() => {
+                      if (quickNoteText.trim()) {
+                        const today = new Date().toISOString().slice(0, 10);
+                        const updated = tasks.map(task => task.id === t.id
+                          ? { ...task, notes: task.notes ? task.notes + "
+" + today + ": " + quickNoteText : today + ": " + quickNoteText }
+                          : task);
+                        saveTasks(updated);
+                      }
+                      setQuickNoteTaskId(null); setQuickNoteText("");
+                    }} style={{ background: COLORS.accent, border: "none", borderRadius: 4, color: "#000", padding: "4px 10px", fontSize: 11, cursor: "pointer", fontWeight: 700 }}>OK</button>
+                  </div>
+                )}
               ))}
             </div>
           </div>
@@ -1049,14 +1119,37 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: 4, marginBottom: 20, borderBottom: `1px solid ${COLORS.border}`, paddingBottom: 0 }}>
-          {["tareas", "gantt", "meeting", "kpis", "equipo"].map(tab => (
+          {/* Stale tasks alert */}
+        {staleTasks.length > 0 && (
+          <div style={{ background: "#a78bfa12", border: "1px solid #a78bfa44", borderRadius: 8, padding: "14px 18px", marginBottom: 12, display: "flex", alignItems: "flex-start", gap: 12 }}>
+            <span style={{ fontSize: 16 }}>🕐</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#a78bfa", marginBottom: 6, letterSpacing: 1, textTransform: "uppercase" }}>
+                {staleTasks.length} tarea{staleTasks.length > 1 ? "s" : ""} sin actividad +7 días
+              </div>
+              {staleTasks.slice(0, 5).map(t => (
+                <div key={t.id} onClick={() => { setEditTarget(t); setModal("editTask"); }}
+                  style={{ fontSize: 12, color: COLORS.text, marginBottom: 3, cursor: "pointer", display: "flex", gap: 6, alignItems: "center" }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = "0.7"}
+                  onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
+                  <span style={{ color: COLORS.muted }}>{t.person} →</span>
+                  <span style={{ flex: 1 }}>{t.title}</span>
+                  <span style={{ fontSize: 10, color: "#a78bfa" }}>sin actividad</span>
+                </div>
+              ))}
+              {staleTasks.length > 5 && <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 4 }}>+{staleTasks.length - 5} más...</div>}
+            </div>
+          </div>
+        )}
+
+        {["tareas", "gantt", "notas", "kpis", "equipo"].map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)} style={{
               background: "transparent", border: "none", cursor: "pointer", padding: "10px 18px",
               fontFamily: "inherit", fontSize: 13, fontWeight: 500,
               color: activeTab === tab ? COLORS.accent : COLORS.muted,
               borderBottom: `2px solid ${activeTab === tab ? COLORS.accent : "transparent"}`,
               textTransform: "capitalize", transition: "all .15s", letterSpacing: 0.5
-            }}>{tab === "meeting" ? "Meeting notes" : tab === "gantt" ? "Gantt" : tab === "kpis" ? "KPIs" : tab.charAt(0).toUpperCase() + tab.slice(1)}</button>
+            }}>{tab === "notas" ? "Notas del día" : tab === "gantt" ? "Gantt" : tab === "kpis" ? "KPIs" : tab.charAt(0).toUpperCase() + tab.slice(1)}</button>
           ))}
         </div>
 
@@ -1172,404 +1265,147 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
         )}
 
         {/* Tab: Meeting */}
-        {activeTab === "meeting" && (
+        {activeTab === "notas" && (
           <div>
-            <MeetingNotes
-              notes={meetingNotes[todayKey] || ""}
-              onSave={saveNote}
-              members={members}
-              tasks={tasks}
-              onAddTasks={(newTasks, updates) => {
-                const today = new Date().toISOString().slice(0, 10);
-                // Detect duplicate tasks
-                const duplicates = [];
-                const stopWords = new Set(["debe","hacer","para","tarea","que","con","los","las","del","una","por","sus","nos","hay","son","mis","nos","han","más"]);
-                
-                const validNewTasks = newTasks.filter(nt => {
-                  const ntTitle = (nt.title || "").toLowerCase();
-                  const ntPerson = (nt.person || "").toLowerCase();
-                  // Use all words > 3 chars except stopwords
-                  const ntWords = ntTitle.split(" ").filter(w => w.length > 3 && !stopWords.has(w));
-                  if (ntWords.length < 2) return true;
-
-                  const findDup = tasks.find(existing => {
-                    // Person must match
-                    const exPerson = existing.person.toLowerCase();
-                    const personMatch = ntPerson && exPerson &&
-                      ntPerson.split(" ").some(p => p.length > 3 && exPerson.includes(p));
-                    if (!personMatch) return false;
-
-                    const exTitle = existing.title.toLowerCase();
-                    const exWords = exTitle.split(" ").filter(w => w.length > 3 && !stopWords.has(w));
-                    if (exWords.length < 2) return false;
-
-                    // Count bidirectional matches
-                    const fwd = ntWords.filter(w => exTitle.includes(w)).length;
-                    const bwd = exWords.filter(w => ntTitle.includes(w)).length;
-                    const fwdPct = fwd / ntWords.length;
-                    const bwdPct = bwd / exWords.length;
-
-                    // Both directions must have at least 60% match
-                    return fwdPct >= 0.6 && bwdPct >= 0.6;
-                  });
-
-                  if (findDup) {
-                    duplicates.push({ new: nt.title, existing: findDup.title });
-                    return false;
-                  }
-                  return true;
-                });
-                if (duplicates.length > 0) {
-                  setDuplicatesFound(duplicates);
-                  // Store the duplicate tasks in case user wants to force add them
-                  const dupTasks = newTasks.filter(nt => {
-                    const ntTitle = (nt.title || "").toLowerCase();
-                    const ntWords = ntTitle.split(" ").filter(w => w.length > 3);
-                    if (ntWords.length === 0) return false;
-                    return tasks.some(existing => {
-                      const exTitle = existing.title.toLowerCase();
-                      const forwardMatches = ntWords.filter(w => exTitle.includes(w));
-                      return forwardMatches.length >= Math.ceil(ntWords.length * 0.5);
-                    });
-                  });
-                  setPendingDuplicates(dupTasks);
-                }
-                const withIds = validNewTasks.map((t, i) => ({
-                  ...t,
-                  id: Date.now() + i,
-                  createdAt: today,
-                  person: t.person || members[0] || "",
-                  status: t.status || "pendiente",
-                  priority: t.priority || "media",
-                  deadline: t.deadline || "",
-                  notes: t.notes || "",
-                  history: []
-                }));
-                let updated = [...tasks, ...withIds];
-                const skippedUpdates = [];
-                if (updates && updates.length > 0) {
-                  updated = updated.map(task => {
-                    const taskTitleLow = task.title.toLowerCase();
-                    const taskPerson = task.person.toLowerCase();
-                    const upd = updates.find(u => {
-                      // 1. Match by exact ID (most reliable)
-                      if (String(u.taskId) === String(task.id)) return true;
-                      // 2. Match by taskTitle - high threshold to avoid false positives
-                      const updTitle = (u.taskTitle || "").toLowerCase();
-                      const updWords = updTitle.split(" ").filter(w => w.length > 4);
-                      if (updWords.length >= 2) {
-                        const titleMatches = updWords.filter(w => taskTitleLow.includes(w));
-                        if (titleMatches.length >= Math.ceil(updWords.length * 0.7)) return true;
-                      }
-                      // 3. Match by comment - very high threshold + person must match
-                      const uPerson = (u.comment || "").toLowerCase();
-                      const personMatch = uPerson.includes(taskPerson.split(" ")[0]) || 
-                                         taskPerson.split(" ").some(p => p.length > 3 && uPerson.includes(p));
-                      if (!personMatch) return false;
-                      const comment = (u.comment || "").toLowerCase();
-                      const commentWords = comment.split(" ").filter(w => w.length > 5);
-                      const commentMatches = commentWords.filter(w => taskTitleLow.includes(w));
-                      return commentWords.length >= 3 && commentMatches.length >= Math.ceil(commentWords.length * 0.5);
-                    });
-                    if (upd) {
-                      // Check if comment is basically the same as the task title (not a real update)
-                      const commentLow = upd.comment.toLowerCase();
-                      const titleLow = task.title.toLowerCase();
-                      const commentWords = commentLow.split(" ").filter(w => w.length > 3);
-                      const titleWords = titleLow.split(" ").filter(w => w.length > 3);
-                      const titleInComment = titleWords.filter(w => commentLow.includes(w));
-                      const isSameAsTitleDup = titleWords.length > 0 && titleInComment.length >= Math.ceil(titleWords.length * 0.7);
-                      
-                      // Check if comment already exists in history
-                      const alreadyInHistory = (task.history || []).some(h => {
-                        const hWords = h.comment.toLowerCase().split(" ").filter(w => w.length > 3);
-                        const uWords = commentWords;
-                        const matches = hWords.filter(w => uWords.includes(w));
-                        return hWords.length > 0 && matches.length >= Math.ceil(hWords.length * 0.6);
-                      });
-
-                      if (isSameAsTitleDup || alreadyInHistory) {
-                        skippedUpdates.push({ task: task.title, comment: upd.comment });
-                        return task;
-                      }
-                      const entry = { date: today, comment: upd.comment };
-                      const newStatus = upd.newStatus || task.status;
-                      return { ...task, status: newStatus, history: [...(task.history || []), entry] };
-                    }
-                    return task;
-                  });
-                }
-                saveTasks(updated);
-                if (skippedUpdates.length > 0) {
-                  setDuplicatesFound(prev => [
-                    ...prev,
-                    ...skippedUpdates.map(s => ({ type: "update", new: s.comment, existing: s.task }))
-                  ]);
-                }
-              }}
-            />
-            {/* Historial */}
-            {Object.keys(meetingNotes).filter(k => k !== todayKey).sort((a, b) => b.localeCompare(a)).slice(0, 7).length > 0 && (
-              <div>
-                <div style={{ fontSize: 11, color: COLORS.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12 }}>Historial</div>
-                {Object.keys(meetingNotes).filter(k => k !== todayKey).sort((a, b) => b.localeCompare(a)).slice(0, 7).map(k => (
-                  <div key={k} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "14px 18px", marginBottom: 10, opacity: 0.7 }}>
-                    <div style={{ fontSize: 11, color: COLORS.accent, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8, fontFamily: "'DM Mono', monospace" }}>
-                      {new Date(k + "T00:00:00").toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}
-                    </div>
-                    <div style={{ fontSize: 12, color: COLORS.muted, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{meetingNotes[k]}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Tab: Gantt */}
-        {activeTab === "gantt" && (
-          <div>
-            {/* Controls */}
-            <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
-              <div style={{ display: "flex", gap: 4, background: COLORS.surface, borderRadius: 6, padding: 3, border: `1px solid ${COLORS.border}` }}>
-                {["timeline", "week"].map(mode => (
-                  <button key={mode} onClick={() => setGanttViewMode(mode)} style={{
-                    background: ganttViewMode === mode ? COLORS.accent : "transparent",
-                    color: ganttViewMode === mode ? "#000" : COLORS.muted,
-                    border: "none", borderRadius: 4, padding: "5px 14px",
-                    fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
-                    textTransform: "uppercase", letterSpacing: 1
-                  }}>{mode === "timeline" ? "Timeline" : "Por semana"}</button>
-                ))}
-              </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <input type="date" value={ganttFilterStart} onChange={e => setGanttFilterStart(e.target.value)}
-                  style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 5, color: COLORS.text, padding: "6px 10px", fontSize: 12, outline: "none", fontFamily: "inherit" }} />
-                <span style={{ color: COLORS.muted, fontSize: 11 }}>→</span>
-                <input type="date" value={ganttFilterEnd} onChange={e => setGanttFilterEnd(e.target.value)}
-                  style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 5, color: COLORS.text, padding: "6px 10px", fontSize: 12, outline: "none", fontFamily: "inherit" }} />
-                {(ganttFilterStart || ganttFilterEnd) && (
-                  <button onClick={() => { setGanttFilterStart(""); setGanttFilterEnd(""); }}
-                    style={{ background: "transparent", border: "none", cursor: "pointer", color: COLORS.muted, fontSize: 12, fontFamily: "inherit" }}>✕ Limpiar</button>
-                )}
-              </div>
-              <div style={{ marginLeft: "auto" }}>
-                <Btn variant="ghost" style={{ fontSize: 11 }} onClick={exportGantt}>📊 Exportar Gantt</Btn>
-              </div>
+            <div style={{ fontSize: 11, color: COLORS.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 20 }}>
+              Notas del día — {new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}
             </div>
 
+            {/* Quick note form */}
             {(() => {
-              const today = new Date();
-              today.setHours(0,0,0,0);
+              const [noteTask, setNoteTask] = React.useState("");
+              const [noteText, setNoteText] = React.useState("");
+              const [noteType, setNoteType] = React.useState("nota"); // "nota" | "reunion"
+              const [meetingPoints, setMeetingPoints] = React.useState("");
+              const [saved, setSaved] = React.useState(false);
 
-              const todayStr = today.toISOString().slice(0, 10);
-              let withDeadline = tasks
-                .filter(t => {
-                  if (!t.deadline) return false;
-                  // Show active tasks always, show completed only if deadline is in the past
-                  if (t.status === "completado") return t.deadline < todayStr;
-                  return true;
-                })
-                .sort((a, b) => a.deadline.localeCompare(b.deadline));
+              const activeTasks = tasks.filter(t => t.status !== "completado");
 
-              // Apply date filter
-              if (ganttFilterStart) withDeadline = withDeadline.filter(t => t.deadline >= ganttFilterStart);
-              if (ganttFilterEnd) withDeadline = withDeadline.filter(t => t.deadline <= ganttFilterEnd);
+              function saveNote() {
+                if (!noteText.trim()) return;
+                const today = new Date().toISOString().slice(0, 10);
+                const prefix = noteType === "reunion" ? `[Reunión ${today}]` : `[${today}]`;
+                const fullNote = meetingPoints.trim()
+                  ? `${prefix} ${noteText}
+• ${meetingPoints.split("
+").filter(Boolean).join("
+• ")}`
+                  : `${prefix} ${noteText}`;
 
-              if (withDeadline.length === 0) return (
-                <div style={{ textAlign: "center", padding: 40, color: COLORS.muted, fontSize: 13 }}>
-                  No hay tareas con deadline en el rango seleccionado.
-                </div>
-              );
+                if (noteTask) {
+                  // Link to specific task
+                  const updated = tasks.map(t => t.id === parseInt(noteTask) || t.id === noteTask
+                    ? { ...t, notes: t.notes ? t.notes + "
+" + fullNote : fullNote }
+                    : t);
+                  saveTasks(updated);
+                }
 
-              // ── WEEK VIEW ──────────────────────────────────────────────
-              if (ganttViewMode === "week") {
-                // Group tasks by ISO week
-                const getWeekKey = (dateStr) => {
-                  const d = new Date(dateStr + "T00:00:00");
-                  const day = d.getDay() || 7;
-                  d.setDate(d.getDate() + 4 - day);
-                  const yearStart = new Date(d.getFullYear(), 0, 1);
-                  const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-                  return `${d.getFullYear()}-W${String(week).padStart(2, "0")}`;
-                };
-                const getWeekLabel = (dateStr) => {
-                  const d = new Date(dateStr + "T00:00:00");
-                  const day = d.getDay() || 7;
-                  const monday = new Date(d);
-                  monday.setDate(d.getDate() - day + 1);
-                  const sunday = new Date(monday);
-                  sunday.setDate(monday.getDate() + 6);
-                  return `${monday.toLocaleDateString("es-ES", { day: "2-digit", month: "short" })} – ${sunday.toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}`;
-                };
+                // Also save to daily notes
+                const updatedNotes = { ...meetingNotes, [today]: meetingNotes[today] ? meetingNotes[today] + "
 
-                const byWeek = {};
-                withDeadline.forEach(t => {
-                  const wk = getWeekKey(t.deadline);
-                  if (!byWeek[wk]) byWeek[wk] = [];
-                  byWeek[wk].push(t);
-                });
+" + fullNote : fullNote };
+                saveMeetingNotes(updatedNotes);
 
-                return (
-                  <div>
-                    {Object.entries(byWeek).sort(([a], [b]) => a.localeCompare(b)).map(([wk, wTasks]) => {
-                      const isCurrentWeek = getWeekKey(today.toISOString().slice(0, 10)) === wk;
-                      return (
-                        <div key={wk} style={{ marginBottom: 24 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: isCurrentWeek ? COLORS.accent : COLORS.muted, letterSpacing: 2, textTransform: "uppercase", fontWeight: isCurrentWeek ? 700 : 400 }}>
-                              {isCurrentWeek ? "📍 " : ""}{wk} · {getWeekLabel(wTasks[0].deadline)}
-                            </div>
-                            <div style={{ fontSize: 10, color: COLORS.muted }}>({wTasks.length} tarea{wTasks.length > 1 ? "s" : ""})</div>
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 16, borderLeft: `2px solid ${isCurrentWeek ? COLORS.accent : COLORS.border}` }}>
-                            {wTasks.map(t => {
-                              const days = daysUntil(t.deadline);
-                              const barColor = t.status === "completado" ? COLORS.success : t.extended ? "#f97316" : days !== null && days < 0 ? COLORS.danger : days !== null && days <= 5 ? COLORS.accent : COLORS.success;
-                              return (
-                                <div key={t.id} onClick={() => { setEditTarget(t); setModal("editTask"); }}
-                                  style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "10px 14px", cursor: "pointer", borderLeft: `3px solid ${barColor}` }}
-                                  onMouseEnter={e => e.currentTarget.style.borderColor = barColor}
-                                  onMouseLeave={e => e.currentTarget.style.borderColor = COLORS.border}>
-                                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                                    <div>
-                                      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 3 }}>{t.title}</div>
-                                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                                        <span style={{ fontSize: 11, color: COLORS.accent, fontWeight: 600 }}>{t.person}</span>
-                                        <Tag label={STATUS_CONFIG[t.status]?.label} color={STATUS_CONFIG[t.status]?.color} />
-                                        <Tag label={PRIORITY_CONFIG[t.priority]?.label} color={PRIORITY_CONFIG[t.priority]?.color} />
-                                      </div>
-                                    </div>
-                                    <div style={{ textAlign: "right", flexShrink: 0 }}>
-                                      <div style={{ fontSize: 12, color: barColor, fontWeight: 700 }}>{formatDate(t.deadline)}</div>
-                                      <DeadlineBadge date={t.deadline} extended={t.extended} showDate={false} />
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
+                setNoteText(""); setNoteTask(""); setMeetingPoints(""); setSaved(true);
+                setTimeout(() => setSaved(false), 2000);
               }
-
-              // ── TIMELINE VIEW ──────────────────────────────────────────
-              const minDate = new Date(withDeadline[0].deadline + "T00:00:00");
-              const maxDate = new Date(withDeadline[withDeadline.length-1].deadline + "T00:00:00");
-              const startDate = new Date(Math.min(today.getTime(), minDate.getTime()));
-              startDate.setDate(1);
-              const endDate = new Date(maxDate);
-              endDate.setMonth(endDate.getMonth() + 1);
-              endDate.setDate(0);
-              const totalDays = Math.ceil((endDate - startDate) / 86400000) + 1;
-
-              const months = [];
-              let cur = new Date(startDate);
-              while (cur <= endDate) {
-                const monthStart = new Date(cur.getFullYear(), cur.getMonth(), 1);
-                const monthEnd = new Date(cur.getFullYear(), cur.getMonth() + 1, 0);
-                const clampStart = Math.max(monthStart, startDate);
-                const clampEnd = Math.min(monthEnd, endDate);
-                const days = Math.ceil((clampEnd - clampStart) / 86400000) + 1;
-                months.push({
-                  label: monthStart.toLocaleDateString("es-ES", { month: "short", year: "2-digit" }),
-                  days,
-                  isCurrentMonth: monthStart.getMonth() === today.getMonth() && monthStart.getFullYear() === today.getFullYear()
-                });
-                cur.setMonth(cur.getMonth() + 1);
-              }
-
-              const todayOffset = Math.ceil((today - startDate) / 86400000);
-              const todayPct = (todayOffset / totalDays) * 100;
-
-              function getPct(dateStr) {
-                const d = new Date(dateStr + "T00:00:00");
-                const offset = Math.ceil((d - startDate) / 86400000);
-                return Math.min(100, Math.max(0, (offset / totalDays) * 100));
-              }
-
-              const byPerson = {};
-              withDeadline.forEach(t => {
-                if (!byPerson[t.person]) byPerson[t.person] = [];
-                byPerson[t.person].push(t);
-              });
 
               return (
-                <div style={{ overflowX: "auto" }}>
-                  <div style={{ minWidth: 600 }}>
-                    <div style={{ display: "flex", marginBottom: 2, marginLeft: 160 }}>
-                      {months.map((m, i) => (
-                        <div key={i} style={{
-                          flex: m.days, textAlign: "center", fontSize: 10,
-                          color: m.isCurrentMonth ? COLORS.accent : COLORS.muted,
-                          fontFamily: "'DM Mono', monospace", letterSpacing: 1,
-                          textTransform: "uppercase", fontWeight: m.isCurrentMonth ? 700 : 400,
-                          borderLeft: i > 0 ? `1px solid ${COLORS.border}` : "none",
-                          paddingBottom: 6
-                        }}>{m.label}</div>
+                <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 20, marginBottom: 20 }}>
+                  <div style={{ display: "flex", gap: 4, marginBottom: 16, background: COLORS.bg, borderRadius: 6, padding: 3, border: `1px solid ${COLORS.border}`, width: "fit-content" }}>
+                    {["nota", "reunion"].map(type => (
+                      <button key={type} onClick={() => setNoteType(type)} style={{
+                        background: noteType === type ? COLORS.accent : "transparent",
+                        color: noteType === type ? "#000" : COLORS.muted,
+                        border: "none", borderRadius: 4, padding: "5px 14px",
+                        fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                        textTransform: "uppercase", letterSpacing: 1
+                      }}>{type === "nota" ? "📝 Nota" : "👥 Reunión"}</button>
+                    ))}
+                  </div>
+
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, color: COLORS.muted, marginBottom: 5, letterSpacing: 1, textTransform: "uppercase" }}>
+                      {noteType === "reunion" ? "Tema de la reunión" : "Nota"}
+                    </div>
+                    <input value={noteText} onChange={e => setNoteText(e.target.value)}
+                      placeholder={noteType === "reunion" ? "Ej: Reunión seguimiento S700 con Javier..." : "Ej: Pendiente confirmar fecha con Tintore..."}
+                      style={{ width: "100%", background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 5, color: COLORS.text, padding: "8px 12px", fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
+                  </div>
+
+                  {noteType === "reunion" && (
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 11, color: COLORS.muted, marginBottom: 5, letterSpacing: 1, textTransform: "uppercase" }}>Puntos clave (uno por línea)</div>
+                      <textarea value={meetingPoints} onChange={e => setMeetingPoints(e.target.value)} rows={3}
+                        placeholder={"- Decisión tomada
+- Acción pendiente
+- Siguiente paso"}
+                        style={{ width: "100%", background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 5, color: COLORS.text, padding: "8px 12px", fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit", resize: "vertical" }} />
+                    </div>
+                  )}
+
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, color: COLORS.muted, marginBottom: 5, letterSpacing: 1, textTransform: "uppercase" }}>Vincular a tarea (opcional)</div>
+                    <select value={noteTask} onChange={e => setNoteTask(e.target.value)}
+                      style={{ width: "100%", background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 5, color: COLORS.text, padding: "8px 12px", fontSize: 13, outline: "none", fontFamily: "inherit" }}>
+                      <option value="">— Sin vincular (nota general del día) —</option>
+                      {members.map(m => (
+                        <optgroup key={m} label={m}>
+                          {activeTasks.filter(t => t.person === m).map(t => (
+                            <option key={t.id} value={t.id}>{t.title.length > 60 ? t.title.slice(0,60)+"…" : t.title}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <Btn onClick={saveNote} disabled={!noteText.trim()}>
+                      {saved ? "✅ Guardado" : noteType === "reunion" ? "Guardar reunión" : "Guardar nota"}
+                    </Btn>
+                    {noteTask && <span style={{ fontSize: 11, color: COLORS.muted }}>Se añadirá a las notas de la tarea seleccionada</span>}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Daily log */}
+            {(() => {
+              const todayNotes = meetingNotes[todayKey];
+              const pastDays = Object.keys(meetingNotes).filter(k => k !== todayKey).sort((a,b) => b.localeCompare(a)).slice(0, 10);
+              return (
+                <div>
+                  {todayNotes && (
+                    <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 16, marginBottom: 12 }}>
+                      <div style={{ fontSize: 10, color: COLORS.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8, fontFamily: "'DM Mono', monospace" }}>Hoy</div>
+                      <div style={{ fontSize: 12, color: COLORS.text, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{todayNotes}</div>
+                    </div>
+                  )}
+                  {pastDays.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, color: COLORS.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 10 }}>Días anteriores</div>
+                      {pastDays.map(k => (
+                        <div key={k} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "12px 16px", marginBottom: 8, opacity: 0.75 }}>
+                          <div style={{ fontSize: 10, color: COLORS.accent, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6, fontFamily: "'DM Mono', monospace" }}>
+                            {new Date(k + "T00:00:00").toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}
+                          </div>
+                          <div style={{ fontSize: 12, color: COLORS.muted, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{meetingNotes[k]}</div>
+                        </div>
                       ))}
                     </div>
-                    {Object.entries(byPerson).map(([person, pTasks]) => (
-                      <div key={person} style={{ marginBottom: 16 }}>
-                        <div style={{ fontSize: 11, color: COLORS.accent, fontWeight: 700, marginBottom: 6 }}>{person}</div>
-                        {pTasks.map(task => {
-                          const pct = getPct(task.deadline);
-                          const days = daysUntil(task.deadline);
-                          const barColor = task.status === "completado" ? COLORS.success : task.extended ? "#f97316" : days !== null && days < 0 ? COLORS.danger : days !== null && days <= 7 ? COLORS.accent : COLORS.success;
-                          const taskStart = task.createdAt || today.toISOString().slice(0, 10);
-                          const startPct = getPct(taskStart);
-                          const barWidth = Math.max(1, pct - startPct);
-                          return (
-                            <div key={task.id} style={{ display: "flex", alignItems: "center", marginBottom: 6, gap: 8 }}>
-                              <div onClick={() => { setEditTarget(task); setModal("editTask"); }}
-                                style={{ width: 152, flexShrink: 0, fontSize: 11, color: COLORS.text, textAlign: "right", paddingRight: 8, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer" }}
-                                title={task.title}>
-                                {task.title.length > 22 ? task.title.slice(0,22) + "…" : task.title}
-                              </div>
-                              <div style={{ flex: 1, position: "relative", height: 24, background: COLORS.surface, borderRadius: 4, border: `1px solid ${COLORS.border}` }}>
-                                <div style={{ position: "absolute", left: `${todayPct}%`, top: 0, bottom: 0, width: 2, background: COLORS.accent, zIndex: 2, opacity: 0.8 }} />
-                                <div onClick={() => { setEditTarget(task); setModal("editTask"); }} style={{
-                                  position: "absolute", left: `${startPct}%`, width: `${barWidth}%`,
-                                  top: 4, bottom: 4, background: barColor + "55", border: `1px solid ${barColor}`,
-                                  borderRadius: 3, display: "flex", alignItems: "center", justifyContent: "flex-end",
-                                  paddingRight: 4, overflow: "hidden", cursor: "pointer"
-                                }}>
-                                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: barColor, flexShrink: 0 }} />
-                                </div>
-                              </div>
-                              <div style={{ width: 48, flexShrink: 0, fontSize: 10, color: barColor, fontWeight: 700 }}>
-                                {formatDate(task.deadline)}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ))}
-                    <div style={{ display: "flex", gap: 16, marginTop: 16, paddingTop: 12, borderTop: `1px solid ${COLORS.border}`, flexWrap: "wrap" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: COLORS.muted }}>
-                        <div style={{ width: 16, height: 2, background: COLORS.accent }} /> Hoy
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: COLORS.muted }}>
-                        <div style={{ width: 12, height: 12, borderRadius: 2, background: COLORS.success + "55", border: `1px solid ${COLORS.success}` }} /> +7 días
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: COLORS.muted }}>
-                        <div style={{ width: 12, height: 12, borderRadius: 2, background: COLORS.accent + "55", border: `1px solid ${COLORS.accent}` }} /> ≤7 días
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: COLORS.muted }}>
-                        <div style={{ width: 12, height: 12, borderRadius: 2, background: COLORS.danger + "55", border: `1px solid ${COLORS.danger}` }} /> Vencida
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: COLORS.muted }}>
-                        <div style={{ width: 12, height: 12, borderRadius: 2, background: "#f9731655", border: "1px solid #f97316" }} /> Alargada
-                      </div>
+                  )}
+                  {!todayNotes && pastDays.length === 0 && (
+                    <div style={{ textAlign: "center", padding: 40, color: COLORS.muted, fontSize: 13 }}>
+                      Sin notas aún. Añade la primera nota del día arriba.
                     </div>
-                  </div>
+                  )}
                 </div>
               );
             })()}
           </div>
         )}
+
         {/* Tab: KPIs */}
         {activeTab === "kpis" && (
           <div>

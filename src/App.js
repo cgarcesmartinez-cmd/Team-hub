@@ -874,19 +874,19 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
       `}</style>
 
       {/* Header */}
-      <div style={{ borderBottom: `1px solid ${COLORS.border}`, padding: "18px 28px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ borderBottom: `1px solid ${COLORS.border}`, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         <div>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: COLORS.accent, letterSpacing: 3, textTransform: "uppercase", marginBottom: 2 }}>Team Hub</div>
-          <div style={{ fontSize: 20, fontWeight: 600 }}>Panel del equipo</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: COLORS.accent, letterSpacing: 3, textTransform: "uppercase", marginBottom: 2 }}>Team Hub · MHE</div>
+          <div style={{ fontSize: 18, fontWeight: 600 }}>Panel del equipo</div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <Btn variant="ghost" style={{ fontSize: 11 }} onClick={exportToExcel}>⬇️ Excel</Btn>
-          <Btn variant="ghost" style={{ fontSize: 11 }} onClick={() => setModal("addMember")}>+ Persona</Btn>
-          {members.length > 0 && <Btn style={{ fontSize: 11 }} onClick={() => setModal("addTask")}>+ Tarea</Btn>}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <Btn variant="ghost" style={{ fontSize: 11, padding: "6px 10px" }} onClick={exportToExcel}>⬇️</Btn>
+          <Btn variant="ghost" style={{ fontSize: 11, padding: "6px 10px" }} onClick={() => setModal("addMember")}>+ Persona</Btn>
+          {members.length > 0 && <Btn style={{ fontSize: 11, padding: "6px 10px" }} onClick={() => setModal("addTask")}>+ Tarea</Btn>}
         </div>
       </div>
 
-      <div style={{ maxWidth: 860, margin: "0 auto", padding: "24px 20px" }}>
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: "16px 12px" }}>
 
         {duplicatesFound.length > 0 && (
           <div style={{ background: COLORS.accent + "12", border: `1px solid ${COLORS.accent}44`, borderRadius: 8, padding: "16px 18px", marginBottom: 20 }}>
@@ -937,7 +937,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
         )}
 
         {/* Tabs */}
-        <div style={{ display: "flex", gap: 4, marginBottom: 20, borderBottom: `1px solid ${COLORS.border}`, paddingBottom: 0 }}>
+        <div style={{ display: "flex", gap: 0, marginBottom: 20, borderBottom: `1px solid ${COLORS.border}`, paddingBottom: 0, overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           {/* Stale tasks alert */}
 
         {/* Alert urgentes */}
@@ -950,11 +950,11 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
               </div>
               {urgentTasks.map(t => (<>
                 <div key={t.id} onClick={() => { setEditTarget(t); setModal("editTask"); }}
-                  style={{ fontSize: 12, color: COLORS.text, marginBottom: 4, display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: "3px 6px", borderRadius: 4, transition: "background .15s" }}
+                  style={{ fontSize: 11, color: COLORS.text, marginBottom: 4, display: "flex", alignItems: "flex-start", gap: 6, cursor: "pointer", padding: "4px 6px", borderRadius: 4, transition: "background .15s" }}
                   onMouseEnter={e => e.currentTarget.style.background = COLORS.border + "44"}
                   onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                  <span style={{ color: COLORS.muted, flexShrink: 0 }}>{t.person} →</span>
-                  <span style={{ flex: 1 }}>{t.title}</span>
+                  <span style={{ color: COLORS.muted, flexShrink: 0, fontSize: 10 }}>{t.person.split(" ")[0]} →</span>
+                  <span style={{ flex: 1, lineHeight: 1.4 }}>{t.title}</span>
                   <DeadlineBadge date={t.deadline} extended={t.extended} showDate={true} />
                   <span onClick={e => { e.stopPropagation(); setQuickNoteTaskId(quickNoteTaskId === t.id ? null : t.id); setQuickNoteText(""); }}
                     style={{ color: COLORS.muted, fontSize: 10, flexShrink: 0, cursor: "pointer", padding: "2px 4px" }}>📝</span>
@@ -1023,12 +1023,12 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
 
         {["tareas", "gantt", "notas", "kpis", "equipo"].map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)} style={{
-              background: "transparent", border: "none", cursor: "pointer", padding: "10px 18px",
-              fontFamily: "inherit", fontSize: 13, fontWeight: 500,
+              background: "transparent", border: "none", cursor: "pointer", padding: "10px 12px",
+              fontFamily: "inherit", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap",
               color: activeTab === tab ? COLORS.accent : COLORS.muted,
               borderBottom: `2px solid ${activeTab === tab ? COLORS.accent : "transparent"}`,
-              textTransform: "capitalize", transition: "all .15s", letterSpacing: 0.5
-            }}>{tab === "notas" ? "Notas del día" : tab === "gantt" ? "Gantt" : tab === "kpis" ? "KPIs" : tab.charAt(0).toUpperCase() + tab.slice(1)}</button>
+              textTransform: "capitalize", transition: "all .15s", letterSpacing: 0.3, flexShrink: 0
+            }}>{tab === "notas" ? "📋 Notas" : tab === "gantt" ? "📊 Gantt" : tab === "kpis" ? "📈 KPIs" : tab === "tareas" ? "✅ Tareas" : "👥 Equipo"}</button>
           ))}
         </div>
 

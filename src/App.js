@@ -874,15 +874,35 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
       `}</style>
 
       {/* Header */}
-      <div style={{ borderBottom: `1px solid ${COLORS.border}`, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-        <div>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: COLORS.accent, letterSpacing: 3, textTransform: "uppercase", marginBottom: 2 }}>Team Hub · MHE</div>
-          <div style={{ fontSize: 18, fontWeight: 600 }}>Panel del equipo</div>
+      <div style={{ borderBottom: `1px solid ${COLORS.border}`, padding: "0 16px", background: COLORS.surface }}>
+        {/* Top bar */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", flexWrap: "wrap", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div>
+              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: COLORS.accent, letterSpacing: 3, textTransform: "uppercase" }}>Team Hub · MHE</div>
+              <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.2 }}>Panel del equipo</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <Btn variant="ghost" style={{ fontSize: 11, padding: "5px 10px" }} onClick={exportToExcel}>⬇️ Excel</Btn>
+            <Btn variant="ghost" style={{ fontSize: 11, padding: "5px 10px" }} onClick={() => setModal("addMember")}>+ Persona</Btn>
+            {members.length > 0 && <Btn style={{ fontSize: 11, padding: "5px 10px" }} onClick={() => setModal("addTask")}>+ Tarea</Btn>}
+          </div>
         </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <Btn variant="ghost" style={{ fontSize: 11, padding: "6px 10px" }} onClick={exportToExcel}>⬇️</Btn>
-          <Btn variant="ghost" style={{ fontSize: 11, padding: "6px 10px" }} onClick={() => setModal("addMember")}>+ Persona</Btn>
-          {members.length > 0 && <Btn style={{ fontSize: 11, padding: "6px 10px" }} onClick={() => setModal("addTask")}>+ Tarea</Btn>}
+        {/* Tabs in header */}
+        <div style={{ display: "flex", overflowX: "auto", WebkitOverflowScrolling: "touch", borderTop: `1px solid ${COLORS.border}` }}>
+          {["tareas", "gantt", "notas", "kpis", "equipo"].map(tab => (
+            <button key={tab} onClick={() => setActiveTab(tab)} style={{
+              background: "transparent", border: "none", cursor: "pointer",
+              padding: "10px 14px", fontFamily: "inherit", fontSize: 12,
+              fontWeight: activeTab === tab ? 700 : 500, whiteSpace: "nowrap", flexShrink: 0,
+              color: activeTab === tab ? COLORS.accent : COLORS.muted,
+              borderBottom: `2px solid ${activeTab === tab ? COLORS.accent : "transparent"}`,
+              transition: "all .15s"
+            }}>
+              {tab === "notas" ? "📋 Notas" : tab === "gantt" ? "📊 Gantt" : tab === "kpis" ? "📈 KPIs" : tab === "tareas" ? "✅ Tareas" : "👥 Equipo"}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -936,105 +956,89 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
           </div>
         )}
 
-        {/* Tabs */}
-        <div style={{ display: "flex", gap: 0, marginBottom: 20, borderBottom: `1px solid ${COLORS.border}`, paddingBottom: 0, overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-          {/* Stale tasks alert */}
-
-        {/* Alert urgentes */}
-        {urgentTasks.length > 0 && (
-          <div style={{ background: COLORS.danger + "12", border: `1px solid ${COLORS.danger}44`, borderRadius: 8, padding: "14px 18px", marginBottom: 20, display: "flex", alignItems: "flex-start", gap: 12 }}>
-            <span style={{ fontSize: 16 }}>⚠️</span>
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.danger, marginBottom: 6, letterSpacing: 1, textTransform: "uppercase" }}>
-                {urgentTasks.length} tarea{urgentTasks.length > 1 ? "s" : ""} urgente{urgentTasks.length > 1 ? "s" : ""}
-              </div>
-              {urgentTasks.map(t => (<>
-                <div key={t.id} onClick={() => { setEditTarget(t); setModal("editTask"); }}
-                  style={{ fontSize: 11, color: COLORS.text, marginBottom: 4, display: "flex", alignItems: "flex-start", gap: 6, cursor: "pointer", padding: "4px 6px", borderRadius: 4, transition: "background .15s" }}
-                  onMouseEnter={e => e.currentTarget.style.background = COLORS.border + "44"}
-                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                  <span style={{ color: COLORS.muted, flexShrink: 0, fontSize: 10 }}>{t.person.split(" ")[0]} →</span>
-                  <span style={{ flex: 1, lineHeight: 1.4 }}>{t.title}</span>
-                  <DeadlineBadge date={t.deadline} extended={t.extended} showDate={true} />
-                  <span onClick={e => { e.stopPropagation(); setQuickNoteTaskId(quickNoteTaskId === t.id ? null : t.id); setQuickNoteText(""); }}
-                    style={{ color: COLORS.muted, fontSize: 10, flexShrink: 0, cursor: "pointer", padding: "2px 4px" }}>📝</span>
-                </div>
-                {quickNoteTaskId === t.id && (
-                  <div style={{ display: "flex", gap: 6, marginTop: 4, marginLeft: 6 }} onClick={e => e.stopPropagation()}>
-                    <input autoFocus value={quickNoteText} onChange={e => setQuickNoteText(e.target.value)}
-                      placeholder="Añadir nota rápida..."
-                      onKeyDown={e => {
-                        if (e.key === "Enter" && quickNoteText.trim()) {
-                          const today = new Date().toISOString().slice(0, 10);
-                          const updated = tasks.map(task => task.id === t.id
-                            ? { ...task, notes: task.notes ? task.notes + "\n" + today + ": " + quickNoteText : today + ": " + quickNoteText }
-                            : task);
-                          saveTasks(updated);
-                          setQuickNoteTaskId(null);
-                          setQuickNoteText("");
-                        }
-                        if (e.key === "Escape") { setQuickNoteTaskId(null); setQuickNoteText(""); }
-                      }}
-                      style={{ flex: 1, background: COLORS.bg, border: `1px solid ${COLORS.accent}`, borderRadius: 4, color: COLORS.text, padding: "4px 8px", fontSize: 11, outline: "none", fontFamily: "inherit" }} />
-                    <button onClick={() => {
-                      if (quickNoteText.trim()) {
-                        const today = new Date().toISOString().slice(0, 10);
-                        const updated = tasks.map(task => task.id === t.id
-                          ? { ...task, notes: task.notes ? task.notes + "\n" + today + ": " + quickNoteText : today + ": " + quickNoteText }
-                          : task);
-                        saveTasks(updated);
-                      }
-                      setQuickNoteTaskId(null); setQuickNoteText("");
-                    }} style={{ background: COLORS.accent, border: "none", borderRadius: 4, color: "#000", padding: "4px 10px", fontSize: 11, cursor: "pointer", fontWeight: 700 }}>OK</button>
-                  </div>
-                )}
-              </>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {staleTasks.length > 0 && (
-          <div style={{ background: "#a78bfa12", border: "1px solid #a78bfa44", borderRadius: 8, padding: "14px 18px", marginBottom: 12, display: "flex", alignItems: "flex-start", gap: 12 }}>
-            <span style={{ fontSize: 16 }}>🕐</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#a78bfa", marginBottom: 6, letterSpacing: 1, textTransform: "uppercase" }}>
-                {staleTasks.length} tarea{staleTasks.length > 1 ? "s" : ""} sin actividad +7 días
-              </div>
-              {staleTasks.slice(0, 5).map(t => (
-                <div key={t.id} onClick={() => { setEditTarget(t); setModal("editTask"); }}
-                  style={{ fontSize: 12, color: COLORS.text, marginBottom: 3, cursor: "pointer", display: "flex", gap: 6, alignItems: "center" }}
-                  onMouseEnter={e => e.currentTarget.style.opacity = "0.7"}
-                  onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
-                  <span style={{ color: COLORS.muted }}>{t.person} →</span>
-                  <span style={{ flex: 1 }}>{t.title}</span>
-                  <span style={{ fontSize: 10, color: "#a78bfa" }}>sin actividad</span>
-                </div>
-              ))}
-              {staleTasks.length > 5 && (
-                <div style={{ fontSize: 11, color: "#a78bfa", marginTop: 6, cursor: "pointer", fontWeight: 600 }}
-                  onClick={() => setActiveTab("tareas")}>
-                  +{staleTasks.length - 5} más → Ver todas en Tareas
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {["tareas", "gantt", "notas", "kpis", "equipo"].map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)} style={{
-              background: "transparent", border: "none", cursor: "pointer", padding: "10px 12px",
-              fontFamily: "inherit", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap",
-              color: activeTab === tab ? COLORS.accent : COLORS.muted,
-              borderBottom: `2px solid ${activeTab === tab ? COLORS.accent : "transparent"}`,
-              textTransform: "capitalize", transition: "all .15s", letterSpacing: 0.3, flexShrink: 0
-            }}>{tab === "notas" ? "📋 Notas" : tab === "gantt" ? "📊 Gantt" : tab === "kpis" ? "📈 KPIs" : tab === "tareas" ? "✅ Tareas" : "👥 Equipo"}</button>
-          ))}
-        </div>
 
         {/* Tab: Tareas */}
         {activeTab === "tareas" && (
           <div>
+        {/* Alert panels - side by side */}
+        {(urgentTasks.length > 0 || staleTasks.length > 0) && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginBottom: 16 }}>
+
+            {/* Urgent tasks */}
+            {urgentTasks.length > 0 && (
+              <div style={{ background: COLORS.danger + "12", border: `1px solid ${COLORS.danger}44`, borderRadius: 8, padding: "12px 14px" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.danger, marginBottom: 8, letterSpacing: 1, textTransform: "uppercase" }}>
+                  ⚠️ {urgentTasks.length} tarea{urgentTasks.length > 1 ? "s" : ""} urgente{urgentTasks.length > 1 ? "s" : ""}
+                </div>
+                <div style={{ maxHeight: 300, overflowY: "auto" }}>
+                  {urgentTasks.map(t => (<>
+                    <div key={t.id} onClick={() => { setEditTarget(t); setModal("editTask"); }}
+                      style={{ fontSize: 11, color: COLORS.text, marginBottom: 4, display: "flex", alignItems: "flex-start", gap: 6, cursor: "pointer", padding: "3px 4px", borderRadius: 4, transition: "background .15s" }}
+                      onMouseEnter={e => e.currentTarget.style.background = COLORS.border + "44"}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      <span style={{ color: COLORS.muted, flexShrink: 0, fontSize: 10 }}>{t.person.split(" ")[0]} →</span>
+                      <span style={{ flex: 1, lineHeight: 1.3 }}>{t.title}</span>
+                      <DeadlineBadge date={t.deadline} extended={t.extended} showDate={true} />
+                      <span onClick={e => { e.stopPropagation(); setQuickNoteTaskId(quickNoteTaskId === t.id ? null : t.id); setQuickNoteText(""); }}
+                        style={{ color: COLORS.muted, fontSize: 10, flexShrink: 0, cursor: "pointer", padding: "2px 4px" }}>📝</span>
+                    </div>
+                    {quickNoteTaskId === t.id && (
+                      <div style={{ display: "flex", gap: 6, marginTop: 4, marginLeft: 6 }} onClick={e => e.stopPropagation()}>
+                        <input autoFocus value={quickNoteText} onChange={e => setQuickNoteText(e.target.value)}
+                          placeholder="Añadir nota rápida..."
+                          onKeyDown={e => {
+                            if (e.key === "Enter" && quickNoteText.trim()) {
+                              const today = new Date().toISOString().slice(0, 10);
+                              const updated = tasks.map(task => task.id === t.id
+                                ? { ...task, notes: task.notes ? task.notes + "\n" + today + ": " + quickNoteText : today + ": " + quickNoteText }
+                                : task);
+                              saveTasks(updated);
+                              setQuickNoteTaskId(null);
+                              setQuickNoteText("");
+                            }
+                            if (e.key === "Escape") { setQuickNoteTaskId(null); setQuickNoteText(""); }
+                          }}
+                          style={{ flex: 1, background: COLORS.bg, border: `1px solid ${COLORS.accent}`, borderRadius: 4, color: COLORS.text, padding: "4px 8px", fontSize: 11, outline: "none", fontFamily: "inherit" }} />
+                        <button onClick={() => {
+                          if (quickNoteText.trim()) {
+                            const today = new Date().toISOString().slice(0, 10);
+                            const updated = tasks.map(task => task.id === t.id
+                              ? { ...task, notes: task.notes ? task.notes + "\n" + today + ": " + quickNoteText : today + ": " + quickNoteText }
+                              : task);
+                            saveTasks(updated);
+                          }
+                          setQuickNoteTaskId(null); setQuickNoteText("");
+                        }} style={{ background: COLORS.accent, border: "none", borderRadius: 4, color: "#000", padding: "4px 10px", fontSize: 11, cursor: "pointer", fontWeight: 700 }}>OK</button>
+                      </div>
+                    )}
+                  </>))}
+                </div>
+              </div>
+            )}
+
+            {/* Stale tasks - show ALL */}
+            {staleTasks.length > 0 && (
+              <div style={{ background: "#a78bfa12", border: "1px solid #a78bfa44", borderRadius: 8, padding: "12px 14px" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#a78bfa", marginBottom: 8, letterSpacing: 1, textTransform: "uppercase" }}>
+                  🕐 {staleTasks.length} sin actividad +7 días
+                </div>
+                <div style={{ maxHeight: 300, overflowY: "auto" }}>
+                  {staleTasks.map(t => (
+                    <div key={t.id} onClick={() => { setEditTarget(t); setModal("editTask"); }}
+                      style={{ fontSize: 11, color: COLORS.text, marginBottom: 4, cursor: "pointer", display: "flex", gap: 6, alignItems: "flex-start", padding: "3px 4px", borderRadius: 4, transition: "background .15s" }}
+                      onMouseEnter={e => e.currentTarget.style.background = COLORS.border + "44"}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      <span style={{ color: COLORS.muted, flexShrink: 0, fontSize: 10 }}>{t.person.split(" ")[0]} →</span>
+                      <span style={{ flex: 1, lineHeight: 1.3 }}>{t.title}</span>
+                      <span style={{ fontSize: 9, color: "#a78bfa", flexShrink: 0 }}>sin actividad</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          </div>
+        )}
             {members.length === 0 ? (
               <div style={{ textAlign: "center", padding: 60, color: COLORS.muted }}>
                 <div style={{ fontSize: 32, marginBottom: 12 }}>👥</div>

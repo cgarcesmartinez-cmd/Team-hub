@@ -888,6 +888,58 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
 
       <div style={{ maxWidth: 860, margin: "0 auto", padding: "24px 20px" }}>
 
+        {duplicatesFound.length > 0 && (
+          <div style={{ background: COLORS.accent + "12", border: `1px solid ${COLORS.accent}44`, borderRadius: 8, padding: "16px 18px", marginBottom: 20 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+              <span style={{ fontSize: 16 }}>🔁</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.accent, marginBottom: 8, letterSpacing: 1, textTransform: "uppercase" }}>
+                  {duplicatesFound.length} tarea{duplicatesFound.length > 1 ? "s" : ""} duplicada{duplicatesFound.length > 1 ? "s" : ""} detectada{duplicatesFound.length > 1 ? "s" : ""}
+                </div>
+                {duplicatesFound.map((d, i) => (
+                  <div key={i} style={{ fontSize: 12, color: COLORS.text, marginBottom: 6, paddingBottom: 6, borderBottom: `1px solid ${COLORS.border}` }}>
+                    {d.type === "update" ? (
+                      <>
+                        <div><span style={{ color: COLORS.muted }}>Comentario ya registrado: </span>{d.new}</div>
+                        <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 2 }}>↳ En tarea: <span style={{ color: COLORS.accent }}>{d.existing}</span></div>
+                      </>
+                    ) : (
+                      <>
+                        <div><span style={{ color: COLORS.muted }}>Tarea duplicada: </span>{d.new}</div>
+                        <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 2 }}>↳ Ya existe como: <span style={{ color: COLORS.accent }}>{d.existing}</span></div>
+                      </>
+                    )}
+                  </div>
+                ))}
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  {pendingDuplicates.length > 0 && <Btn onClick={() => {
+                    const today = new Date().toISOString().slice(0, 10);
+                    const withIds = pendingDuplicates.map((t, i) => ({
+                      ...t,
+                      id: Date.now() + i,
+                      createdAt: today,
+                      person: t.person || members[0] || "",
+                      status: t.status || "pendiente",
+                      priority: t.priority || "media",
+                      deadline: t.deadline || "",
+                      notes: t.notes || "",
+                      history: []
+                    }));
+                    saveTasks([...tasks, ...withIds]);
+                    setDuplicatesFound([]);
+                    setPendingDuplicates([]);
+                  }} style={{ fontSize: 11 }}>✅ Añadir tarea igualmente</Btn>}
+                  <Btn variant="ghost" onClick={() => { setDuplicatesFound([]); setPendingDuplicates([]); }} style={{ fontSize: 11 }}>✕ Cerrar</Btn>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div style={{ display: "flex", gap: 4, marginBottom: 20, borderBottom: `1px solid ${COLORS.border}`, paddingBottom: 0 }}>
+          {/* Stale tasks alert */}
+
         {/* Alert urgentes */}
         {urgentTasks.length > 0 && (
           <div style={{ background: COLORS.danger + "12", border: `1px solid ${COLORS.danger}44`, borderRadius: 8, padding: "14px 18px", marginBottom: 20, display: "flex", alignItems: "flex-start", gap: 12 }}>
@@ -941,57 +993,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
             </div>
           </div>
         )}
-        {duplicatesFound.length > 0 && (
-          <div style={{ background: COLORS.accent + "12", border: `1px solid ${COLORS.accent}44`, borderRadius: 8, padding: "16px 18px", marginBottom: 20 }}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-              <span style={{ fontSize: 16 }}>🔁</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.accent, marginBottom: 8, letterSpacing: 1, textTransform: "uppercase" }}>
-                  {duplicatesFound.length} tarea{duplicatesFound.length > 1 ? "s" : ""} duplicada{duplicatesFound.length > 1 ? "s" : ""} detectada{duplicatesFound.length > 1 ? "s" : ""}
-                </div>
-                {duplicatesFound.map((d, i) => (
-                  <div key={i} style={{ fontSize: 12, color: COLORS.text, marginBottom: 6, paddingBottom: 6, borderBottom: `1px solid ${COLORS.border}` }}>
-                    {d.type === "update" ? (
-                      <>
-                        <div><span style={{ color: COLORS.muted }}>Comentario ya registrado: </span>{d.new}</div>
-                        <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 2 }}>↳ En tarea: <span style={{ color: COLORS.accent }}>{d.existing}</span></div>
-                      </>
-                    ) : (
-                      <>
-                        <div><span style={{ color: COLORS.muted }}>Tarea duplicada: </span>{d.new}</div>
-                        <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 2 }}>↳ Ya existe como: <span style={{ color: COLORS.accent }}>{d.existing}</span></div>
-                      </>
-                    )}
-                  </div>
-                ))}
-                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                  {pendingDuplicates.length > 0 && <Btn onClick={() => {
-                    const today = new Date().toISOString().slice(0, 10);
-                    const withIds = pendingDuplicates.map((t, i) => ({
-                      ...t,
-                      id: Date.now() + i,
-                      createdAt: today,
-                      person: t.person || members[0] || "",
-                      status: t.status || "pendiente",
-                      priority: t.priority || "media",
-                      deadline: t.deadline || "",
-                      notes: t.notes || "",
-                      history: []
-                    }));
-                    saveTasks([...tasks, ...withIds]);
-                    setDuplicatesFound([]);
-                    setPendingDuplicates([]);
-                  }} style={{ fontSize: 11 }}>✅ Añadir tarea igualmente</Btn>}
-                  <Btn variant="ghost" onClick={() => { setDuplicatesFound([]); setPendingDuplicates([]); }} style={{ fontSize: 11 }}>✕ Cerrar</Btn>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {/* Tabs */}
-        <div style={{ display: "flex", gap: 4, marginBottom: 20, borderBottom: `1px solid ${COLORS.border}`, paddingBottom: 0 }}>
-          {/* Stale tasks alert */}
         {staleTasks.length > 0 && (
           <div style={{ background: "#a78bfa12", border: "1px solid #a78bfa44", borderRadius: 8, padding: "14px 18px", marginBottom: 12, display: "flex", alignItems: "flex-start", gap: 12 }}>
             <span style={{ fontSize: 16 }}>🕐</span>
@@ -1009,7 +1011,12 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                   <span style={{ fontSize: 10, color: "#a78bfa" }}>sin actividad</span>
                 </div>
               ))}
-              {staleTasks.length > 5 && <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 4 }}>+{staleTasks.length - 5} más...</div>}
+              {staleTasks.length > 5 && (
+                <div style={{ fontSize: 11, color: "#a78bfa", marginTop: 6, cursor: "pointer", fontWeight: 600 }}
+                  onClick={() => setActiveTab("tareas")}>
+                  +{staleTasks.length - 5} más → Ver todas en Tareas
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1147,7 +1154,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
             {(() => {
               const activeTasks = tasks.filter(t => t.status !== "completado");
 
-              const saveDayNote = () => {
+              const saveDayNote = async () => {
                 if (!noteText.trim()) return;
                 const today = new Date().toISOString().slice(0, 10);
                 const prefix = noteType === "reunion" ? `[Reunión ${today}]` : `[${today}]`;
@@ -1158,11 +1165,10 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                   const updated = tasks.map(t => String(t.id) === String(taskId)
                     ? { ...t, notes: t.notes ? t.notes + "\n" + fullNote : fullNote }
                     : t);
-                  saveTasks(updated);
+                  await saveTasks(updated);
                 }
                 const updatedNotes = { ...meetingNotes, [today]: meetingNotes[today] ? meetingNotes[today] + "\n\n" + fullNote : fullNote };
-                saveMeetingNotes(updatedNotes);
-                setNoteText(""); setNoteTask(""); setMeetingPoints(""); setNoteSaved(true);
+                await saveMeetingNotes(updatedNotes);
                 setTimeout(() => setNoteSaved(false), 2000);
               }
 
@@ -1253,6 +1259,204 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                       Sin notas aún. Añade la primera nota del día arriba.
                     </div>
                   )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* Tab: Gantt */}
+        {activeTab === "gantt" && (
+          <div>
+            {/* Controls */}
+            <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 4, background: COLORS.surface, borderRadius: 6, padding: 3, border: `1px solid ${COLORS.border}` }}>
+                {["timeline", "week"].map(mode => (
+                  <button key={mode} onClick={() => setGanttViewMode(mode)} style={{
+                    background: ganttViewMode === mode ? COLORS.accent : "transparent",
+                    color: ganttViewMode === mode ? "#000" : COLORS.muted,
+                    border: "none", borderRadius: 4, padding: "5px 14px",
+                    fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                    textTransform: "uppercase", letterSpacing: 1
+                  }}>{mode === "timeline" ? "Timeline" : "Por semana"}</button>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <input type="date" value={ganttFilterStart} onChange={e => setGanttFilterStart(e.target.value)}
+                  style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 5, color: COLORS.text, padding: "6px 10px", fontSize: 12, outline: "none", fontFamily: "inherit" }} />
+                <span style={{ color: COLORS.muted, fontSize: 11 }}>→</span>
+                <input type="date" value={ganttFilterEnd} onChange={e => setGanttFilterEnd(e.target.value)}
+                  style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 5, color: COLORS.text, padding: "6px 10px", fontSize: 12, outline: "none", fontFamily: "inherit" }} />
+                {(ganttFilterStart || ganttFilterEnd) && (
+                  <button onClick={() => { setGanttFilterStart(""); setGanttFilterEnd(""); }}
+                    style={{ background: "transparent", border: "none", cursor: "pointer", color: COLORS.muted, fontSize: 12, fontFamily: "inherit" }}>✕ Limpiar</button>
+                )}
+              </div>
+              <div style={{ marginLeft: "auto" }}>
+                <Btn variant="ghost" style={{ fontSize: 11 }} onClick={exportGantt}>📊 Exportar</Btn>
+              </div>
+            </div>
+
+            {(() => {
+              const today = new Date();
+              today.setHours(0,0,0,0);
+              const todayStr = today.toISOString().slice(0, 10);
+
+              let withDeadline = tasks
+                .filter(t => {
+                  if (!t.deadline) return false;
+                  if (t.status === "completado") return t.deadline < todayStr;
+                  return true;
+                })
+                .sort((a, b) => a.deadline.localeCompare(b.deadline));
+
+              if (ganttFilterStart) withDeadline = withDeadline.filter(t => t.deadline >= ganttFilterStart);
+              if (ganttFilterEnd) withDeadline = withDeadline.filter(t => t.deadline <= ganttFilterEnd);
+
+              if (withDeadline.length === 0) return (
+                <div style={{ textAlign: "center", padding: 40, color: COLORS.muted, fontSize: 13 }}>
+                  No hay tareas con deadline en el rango seleccionado.
+                </div>
+              );
+
+              if (ganttViewMode === "week") {
+                const getWeekKey = (dateStr) => {
+                  const d = new Date(dateStr + "T00:00:00");
+                  const day = d.getDay() || 7;
+                  d.setDate(d.getDate() + 4 - day);
+                  const yearStart = new Date(d.getFullYear(), 0, 1);
+                  const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+                  return `${d.getFullYear()}-W${String(week).padStart(2, "0")}`;
+                };
+                const getWeekLabel = (dateStr) => {
+                  const d = new Date(dateStr + "T00:00:00");
+                  const day = d.getDay() || 7;
+                  const monday = new Date(d);
+                  monday.setDate(d.getDate() - day + 1);
+                  const sunday = new Date(monday);
+                  sunday.setDate(monday.getDate() + 6);
+                  return `${monday.toLocaleDateString("es-ES", { day: "2-digit", month: "short" })} – ${sunday.toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}`;
+                };
+                const byWeek = {};
+                withDeadline.forEach(t => {
+                  const wk = getWeekKey(t.deadline);
+                  if (!byWeek[wk]) byWeek[wk] = [];
+                  byWeek[wk].push(t);
+                });
+                return (
+                  <div>
+                    {Object.entries(byWeek).sort(([a], [b]) => a.localeCompare(b)).map(([wk, wTasks]) => {
+                      const isCurrentWeek = getWeekKey(todayStr) === wk;
+                      return (
+                        <div key={wk} style={{ marginBottom: 24 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: isCurrentWeek ? COLORS.accent : COLORS.muted, letterSpacing: 2, textTransform: "uppercase", fontWeight: isCurrentWeek ? 700 : 400 }}>
+                              {isCurrentWeek ? "📍 " : ""}{wk} · {getWeekLabel(wTasks[0].deadline)}
+                            </div>
+                            <div style={{ fontSize: 10, color: COLORS.muted }}>({wTasks.length} tarea{wTasks.length > 1 ? "s" : ""})</div>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 16, borderLeft: `2px solid ${isCurrentWeek ? COLORS.accent : COLORS.border}` }}>
+                            {wTasks.map(t => {
+                              const days = daysUntil(t.deadline);
+                              const barColor = t.status === "completado" ? COLORS.success : t.extended ? "#f97316" : days !== null && days < 0 ? COLORS.danger : days !== null && days <= 5 ? COLORS.accent : COLORS.success;
+                              return (
+                                <div key={t.id} onClick={() => { setEditTarget(t); setModal("editTask"); }}
+                                  style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "10px 14px", cursor: "pointer", borderLeft: `3px solid ${barColor}`, opacity: t.status === "completado" ? 0.6 : 1 }}>
+                                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                                    <div>
+                                      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 3, textDecoration: t.status === "completado" ? "line-through" : "none" }}>{t.title}</div>
+                                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                        <span style={{ fontSize: 11, color: COLORS.accent, fontWeight: 600 }}>{t.person}</span>
+                                        <Tag label={STATUS_CONFIG[t.status]?.label} color={STATUS_CONFIG[t.status]?.color} />
+                                      </div>
+                                    </div>
+                                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                                      <div style={{ fontSize: 12, color: barColor, fontWeight: 700 }}>{formatDate(t.deadline)}</div>
+                                      <DeadlineBadge date={t.deadline} extended={t.extended} />
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              }
+
+              // Timeline view
+              const minDate = new Date(withDeadline[0].deadline + "T00:00:00");
+              const maxDate = new Date(withDeadline[withDeadline.length-1].deadline + "T00:00:00");
+              const startDate = new Date(Math.min(today.getTime(), minDate.getTime()));
+              startDate.setDate(1);
+              const endDate = new Date(maxDate);
+              endDate.setMonth(endDate.getMonth() + 1);
+              endDate.setDate(0);
+              const totalDays = Math.ceil((endDate - startDate) / 86400000) + 1;
+              const months = [];
+              let cur = new Date(startDate);
+              while (cur <= endDate) {
+                const monthStart = new Date(cur.getFullYear(), cur.getMonth(), 1);
+                const monthEnd = new Date(cur.getFullYear(), cur.getMonth() + 1, 0);
+                const clampStart = new Date(Math.max(monthStart, startDate));
+                const clampEnd = new Date(Math.min(monthEnd, endDate));
+                const days = Math.ceil((clampEnd - clampStart) / 86400000) + 1;
+                months.push({ label: monthStart.toLocaleDateString("es-ES", { month: "short", year: "2-digit" }), days, isCurrentMonth: monthStart.getMonth() === today.getMonth() && monthStart.getFullYear() === today.getFullYear() });
+                cur.setMonth(cur.getMonth() + 1);
+              }
+              const todayOffset = Math.ceil((today - startDate) / 86400000);
+              const todayPct = (todayOffset / totalDays) * 100;
+              function getPct(dateStr) {
+                const d = new Date(dateStr + "T00:00:00");
+                return Math.min(100, Math.max(0, (Math.ceil((d - startDate) / 86400000) / totalDays) * 100));
+              }
+              const byPerson = {};
+              withDeadline.forEach(t => { if (!byPerson[t.person]) byPerson[t.person] = []; byPerson[t.person].push(t); });
+
+              return (
+                <div style={{ overflowX: "auto" }}>
+                  <div style={{ minWidth: 600 }}>
+                    <div style={{ display: "flex", marginBottom: 2, marginLeft: 160 }}>
+                      {months.map((m, i) => (
+                        <div key={i} style={{ flex: m.days, textAlign: "center", fontSize: 10, color: m.isCurrentMonth ? COLORS.accent : COLORS.muted, fontFamily: "'DM Mono', monospace", letterSpacing: 1, textTransform: "uppercase", fontWeight: m.isCurrentMonth ? 700 : 400, borderLeft: i > 0 ? `1px solid ${COLORS.border}` : "none", paddingBottom: 6 }}>{m.label}</div>
+                      ))}
+                    </div>
+                    {Object.entries(byPerson).map(([person, pTasks]) => (
+                      <div key={person} style={{ marginBottom: 16 }}>
+                        <div style={{ fontSize: 11, color: COLORS.accent, fontWeight: 700, marginBottom: 6 }}>{person}</div>
+                        {pTasks.map(task => {
+                          const pct = getPct(task.deadline);
+                          const days = daysUntil(task.deadline);
+                          const barColor = task.status === "completado" ? COLORS.success : task.extended ? "#f97316" : days !== null && days < 0 ? COLORS.danger : days !== null && days <= 7 ? COLORS.accent : COLORS.success;
+                          const taskStart = task.createdAt || todayStr;
+                          const startPct = getPct(taskStart);
+                          const barWidth = Math.max(1, pct - startPct);
+                          return (
+                            <div key={task.id} style={{ display: "flex", alignItems: "center", marginBottom: 6, gap: 8 }}>
+                              <div onClick={() => { setEditTarget(task); setModal("editTask"); }}
+                                style={{ width: 152, flexShrink: 0, fontSize: 11, color: COLORS.text, textAlign: "right", paddingRight: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer" }}
+                                title={task.title}>{task.title.length > 22 ? task.title.slice(0,22) + "…" : task.title}</div>
+                              <div style={{ flex: 1, position: "relative", height: 24, background: COLORS.surface, borderRadius: 4, border: `1px solid ${COLORS.border}` }}>
+                                <div style={{ position: "absolute", left: `${todayPct}%`, top: 0, bottom: 0, width: 2, background: COLORS.accent, zIndex: 2, opacity: 0.8 }} />
+                                <div onClick={() => { setEditTarget(task); setModal("editTask"); }} style={{ position: "absolute", left: `${startPct}%`, width: `${barWidth}%`, top: 4, bottom: 4, background: barColor + "55", border: `1px solid ${barColor}`, borderRadius: 3, cursor: "pointer", opacity: task.status === "completado" ? 0.6 : 1 }} />
+                              </div>
+                              <div style={{ width: 48, flexShrink: 0, fontSize: 10, color: barColor, fontWeight: 700 }}>{formatDate(task.deadline)}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                    <div style={{ display: "flex", gap: 16, marginTop: 16, paddingTop: 12, borderTop: `1px solid ${COLORS.border}`, flexWrap: "wrap" }}>
+                      {[["Hoy", COLORS.accent, "2px solid"], ["+7 días", COLORS.success, "1px solid"], ["≤7 días", COLORS.accent, "1px solid"], ["Vencida", COLORS.danger, "1px solid"], ["Alargada", "#f97316", "1px solid"], ["Completada", COLORS.success, "1px solid"]].map(([label, color, border]) => (
+                        <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: COLORS.muted }}>
+                          <div style={{ width: label === "Hoy" ? 2 : 12, height: label === "Hoy" ? 12 : 12, borderRadius: label === "Hoy" ? 0 : 2, background: color + (label === "Hoy" ? "" : "55"), border: `${border} ${color}` }} />
+                          {label}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               );
             })()}

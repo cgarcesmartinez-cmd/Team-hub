@@ -148,7 +148,7 @@ function Btn({ children, variant = "primary", ...props }) {
 
 // ─── Task Form ─────────────────────────────────────────────────────────────
 
-function TaskForm({ members, initial, onSave, onCancel }) {
+function TaskForm({ members, initial, onSave, onCancel, onDelete }) {
   const [form, setForm] = useState(initial || {
     title: "", person: members[0] || "", status: "pendiente",
     priority: "media", deadline: "", notes: ""
@@ -178,9 +178,14 @@ function TaskForm({ members, initial, onSave, onCancel }) {
           rows={3} placeholder="Contexto adicional..."
           style={{ width: "100%", background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 5, color: COLORS.text, padding: "8px 10px", fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit", resize: "vertical" }} />
       </div>
-      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-        <Btn variant="ghost" onClick={onCancel}>Cancelar</Btn>
-        <Btn onClick={() => form.title && form.person && onSave(form)}>Guardar</Btn>
+      <div style={{ display: "flex", gap: 10, justifyContent: "space-between" }}>
+        {onDelete ? (
+          <Btn variant="danger" onClick={() => { if (window.confirm("¿Eliminar esta tarea? No se puede deshacer.")) onDelete(); }}>Eliminar</Btn>
+        ) : <span />}
+        <div style={{ display: "flex", gap: 10 }}>
+          <Btn variant="ghost" onClick={onCancel}>Cancelar</Btn>
+          <Btn onClick={() => form.title && form.person && onSave(form)}>Guardar</Btn>
+        </div>
       </div>
     </div>
   );
@@ -796,6 +801,27 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
     } catch (e) { console.error("Error actualizando propuesta:", e); }
   }
 
+  // Detección de duplicados compartida entre "Nueva tarea" manual y aceptar propuestas de correo.
+  const DUP_STOP_WORDS = new Set(["debe","hacer","para","tarea","que","con","los","las","del","una","por","sus","nos","hay","son","más"]);
+  function findDuplicateTask(title, person) {
+    const newTitle = (title || "").toLowerCase();
+    const newPerson = (person || "").toLowerCase();
+    const newWords = newTitle.split(" ").filter(w => w.length > 3 && !DUP_STOP_WORDS.has(w));
+    if (newWords.length < 2) return null;
+    return tasks.find(existing => {
+      const exPerson = existing.person.toLowerCase();
+      const personMatch = newPerson && exPerson &&
+        newPerson.split(" ").some(p => p.length > 3 && exPerson.includes(p));
+      if (!personMatch) return false;
+      const exTitle = existing.title.toLowerCase();
+      const exWords = exTitle.split(" ").filter(w => w.length > 3 && !DUP_STOP_WORDS.has(w));
+      if (exWords.length < 2) return false;
+      const fwd = newWords.filter(w => exTitle.includes(w)).length;
+      const bwd = exWords.filter(w => newTitle.includes(w)).length;
+      return (fwd / newWords.length) >= 0.6 && (bwd / exWords.length) >= 0.6;
+    }) || null;
+  }
+
   function acceptProposal(p) {
     const extra = [p.project ? `[${p.project}]` : "", p.waiting_for ? `Espera: ${p.waiting_for}.` : "", p.notes || "", p.subject ? `Correo: ${p.subject}` : ""].filter(Boolean).join(" ");
     const target = p.task_id ? tasks.find(t => t.id === p.task_id) : null;
@@ -804,6 +830,13 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
         ...t, history: [...(t.history || []), { date: todayKey, comment: (p.title + (p.notes ? " — " + p.notes : "")).trim() }]
       }));
     } else {
+      const dup = findDuplicateTask(p.title, p.person);
+      if (dup) {
+        // Ya existe una tarea prácticamente igual: no duplicamos, avisamos y descartamos la propuesta.
+        setDuplicatesFound([{ new: p.title, existing: dup.title }]);
+        setProposalStatus(p.id, "descartada");
+        return;
+      }
       saveTasks([...tasks, {
         id: Date.now(), person: p.person || (members[0] || ""),
         title: (p.kind === "incidencia" ? "[INCIDENCIA] " : "") + p.title,
@@ -815,31 +848,12 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
   }
 
   function addTask(form) {
-    // Check for duplicates before adding
-    const stopWords = new Set(["debe","hacer","para","tarea","que","con","los","las","del","una","por","sus","nos","hay","son","más"]);
-    const newTitle = (form.title || "").toLowerCase();
-    const newPerson = (form.person || "").toLowerCase();
-    const newWords = newTitle.split(" ").filter(w => w.length > 3 && !stopWords.has(w));
-    
-    if (newWords.length >= 2) {
-      const dup = tasks.find(existing => {
-        const exPerson = existing.person.toLowerCase();
-        const personMatch = newPerson && exPerson &&
-          newPerson.split(" ").some(p => p.length > 3 && exPerson.includes(p));
-        if (!personMatch) return false;
-        const exTitle = existing.title.toLowerCase();
-        const exWords = exTitle.split(" ").filter(w => w.length > 3 && !stopWords.has(w));
-        if (exWords.length < 2) return false;
-        const fwd = newWords.filter(w => exTitle.includes(w)).length;
-        const bwd = exWords.filter(w => newTitle.includes(w)).length;
-        return (fwd / newWords.length) >= 0.6 && (bwd / exWords.length) >= 0.6;
-      });
-      if (dup) {
-        setDuplicatesFound([{ new: form.title, existing: dup.title }]);
-        setPendingDuplicates([{ ...form, id: Date.now(), createdAt: todayKey }]);
-        setModal(null);
-        return;
-      }
+    const dup = findDuplicateTask(form.title, form.person);
+    if (dup) {
+      setDuplicatesFound([{ new: form.title, existing: dup.title }]);
+      setPendingDuplicates([{ ...form, id: Date.now(), createdAt: todayKey }]);
+      setModal(null);
+      return;
     }
     saveTasks([...tasks, { ...form, id: Date.now(), createdAt: todayKey }]);
     setModal(null);
@@ -921,6 +935,10 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
         input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.5); }
         ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
         select option { background: #1a1a1a; }
+        .th-container { max-width: 900px; margin: 0 auto; padding: 16px 12px; }
+        @media (min-width: 900px) { .th-container { max-width: 1100px; padding: 20px 24px; } }
+        @media (min-width: 1280px) { .th-container { max-width: 1280px; padding: 24px 32px; } }
+        @media (max-width: 420px) { .th-container { padding: 12px 8px; } }
       `}</style>
 
       {/* Header */}
@@ -956,7 +974,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
         </div>
       </div>
 
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: "16px 12px" }}>
+      <div className="th-container">
 
         {duplicatesFound.length > 0 && (
           <div style={{ background: COLORS.accent + "12", border: `1px solid ${COLORS.accent}44`, borderRadius: 8, padding: "16px 18px", marginBottom: 20 }}>
@@ -1026,15 +1044,21 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
               {items.length === 0 && <Text className="text-gray-600 text-sm">{emptyText}</Text>}
               {items.map((p, i) => {
                 const vc = inferVehicleColor((p.title || "") + " " + (p.project || "") + " " + (p.subject || ""));
+                const isTask = !!p.taskRef;
                 return (
                   <div key={p.id || i} className="border-l-2 pl-3 py-2 mb-2" style={{ borderColor: vc.hex }}>
                     <Flex justifyContent="between" alignItems="start">
-                      <div className="flex-1 pr-2">
+                      <div className="flex-1 pr-2" style={isTask ? { cursor: "pointer" } : undefined}
+                        onClick={isTask ? () => { setEditTarget(p.taskRef); setModal("editTask"); } : undefined}>
                         <Text className="text-gray-100 text-sm font-medium">{p.title}</Text>
                         <Text className="text-gray-500 text-xs mt-0.5">{p.person}{p.project ? ` · ${p.project}` : ""}</Text>
                         {p.reason && <Text className="text-gray-500 text-xs mt-1">{p.reason}</Text>}
                       </div>
-                      {p.id && (
+                      {isTask ? (
+                        <div className="flex gap-1 flex-shrink-0">
+                          <button onClick={() => { setEditTarget(p.taskRef); setModal("editTask"); }} className="text-xs px-2 py-1 rounded bg-gray-800 text-gray-400 hover:bg-gray-700" title="Editar / completar / eliminar">✏️</button>
+                        </div>
+                      ) : p.id && (
                         <div className="flex gap-1 flex-shrink-0">
                           <button onClick={() => acceptProposal(p)} className="text-xs px-2 py-1 rounded bg-green-900/40 text-green-400 hover:bg-green-900/60">✓</button>
                           <button onClick={() => setProposalStatus(p.id, "descartada")} className="text-xs px-2 py-1 rounded bg-gray-800 text-gray-500 hover:bg-gray-700">✕</button>
@@ -1069,7 +1093,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                 </Card>
               </Flex>
 
-              <Section title="Urgente / riesgo" color="#e5484d" items={[...incidencias, ...vencidas.map(t => ({ id: "t"+t.id, title: t.title, person: t.person, reason: "Vencida" }))]} emptyText="Nada urgente hoy." />
+              <Section title="Urgente / riesgo" color="#e5484d" items={[...incidencias, ...vencidas.map(t => ({ id: "t"+t.id, title: t.title, person: t.person, reason: "Vencida", taskRef: t }))]} emptyText="Nada urgente hoy." />
               <Section title="Esperando tu respuesta" color="#f5a623" items={esperandoRespuesta} emptyText="Nada pendiente de ti." />
               <Section title="Seguimiento del equipo" color="#5b6472" items={seguimiento} emptyText="Sin novedades de seguimiento." />
             </div>
@@ -1924,7 +1948,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
       )}
       {modal === "editTask" && editTarget && (
         <Modal onClose={() => { setModal(null); setEditTarget(null); }}>
-          <TaskForm members={members} initial={editTarget} onSave={updateTask} onCancel={() => { setModal(null); setEditTarget(null); }} />
+          <TaskForm members={members} initial={editTarget} onSave={updateTask} onCancel={() => { setModal(null); setEditTarget(null); }} onDelete={() => { deleteTask(editTarget.id); setModal(null); setEditTarget(null); }} />
         </Modal>
       )}
     </div>

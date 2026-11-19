@@ -1688,12 +1688,14 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                     <Text className="text-gray-400 text-xs uppercase tracking-wider mb-3">Estado actual por persona (activas / bloqueadas / vencidas)</Text>
                     <Text className="text-gray-600 text-xs mb-2">No incluye completadas: son un acumulado histórico y no son comparables con una foto de ahora mismo.</Text>
                     <BarChart
-                      className="h-60 mt-2"
-                      data={memberStats.map(s => ({ name: s.m.split(" ")[0], Activas: s.active, Bloqueadas: s.blocked, Vencidas: s.overdue }))}
+                      className="mt-2"
+                      style={{ height: Math.max(220, memberStats.length * 42) }}
+                      layout="vertical"
+                      data={memberStats.map(s => ({ name: s.m, Activas: s.active, Bloqueadas: s.blocked, Vencidas: s.overdue }))}
                       index="name"
                       categories={["Activas", "Bloqueadas", "Vencidas"]}
                       colors={["blue", "amber", "red"]}
-                      yAxisWidth={30}
+                      yAxisWidth={90}
                       showAnimation={true}
                     />
                   </Card>

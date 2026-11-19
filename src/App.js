@@ -1,10 +1,13 @@
 import React from "react";
 import { useState, useEffect } from "react";
+import { Card, Metric, Text, Flex, BadgeDelta, ProgressBar, BarChart, DonutChart } from "@tremor/react";
+import "./index.css";
+import { inferVehicleColor, PRIORITY_COLORS, VEHICLE_COLORS } from "./projectColors";
 
 const COLORS = {
-  bg: "#0f0f0f",
-  surface: "#1a1a1a",
-  border: "#2a2a2a",
+  bg: "#0b0d10",
+  surface: "#14171c",
+  border: "#262b33",
   accent: "#e8c547",
   accentDim: "#c9a832",
   text: "#f0ede6",
@@ -211,7 +214,9 @@ export default function TeamHub() {
   const [editTarget, setEditTarget] = useState(null);
   const [filterPerson, setFilterPerson] = useState("todos");
   const [filterStatus, setFilterStatus] = useState("todos");
-  const [activeTab, setActiveTab] = useState("tareas");
+  const [filterVehicle, setFilterVehicle] = useState("todos");
+  const [activeTab, setActiveTab] = useState("hoy");
+  const [proposals, setProposals] = useState([]);
 
   const todayKey = new Date().toISOString().slice(0, 10);
   const [search, setSearch] = useState("");
@@ -679,6 +684,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
             createdAt: r.created_at_date || "",
             extended: r.extended || false,
             originalDeadline: r.original_deadline || "",
+            completedAt: r.completed_at || "",
             history: r.history || []
           }));
           setTasks(mapped);
@@ -737,6 +743,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
         created_at_date: t.createdAt || "",
         extended: t.extended || false,
         original_deadline: t.originalDeadline || "",
+        completed_at: t.completedAt || "",
         history: t.history || []
       }));
       await sbFetch("/tasks?on_conflict=id", {
@@ -767,9 +774,44 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
     } catch(e) { console.error("Error saving notes:", e); }
   }
 
+  useEffect(() => { loadProposals(); }, []);
+  useEffect(() => { if (activeTab === "propuestas") loadProposals(); }, [activeTab]);
+
   function addMember(name) {
     if (!members.includes(name)) saveMembers([...members, name]);
     setModal(null);
+  }
+
+  async function loadProposals() {
+    try {
+      const rows = await sbFetch("/task_proposals?status=eq.pendiente&order=id.desc&limit=100");
+      setProposals(rows || []);
+    } catch (e) { console.error("Error cargando propuestas:", e); }
+  }
+
+  async function setProposalStatus(id, status) {
+    setProposals(prev => prev.filter(p => p.id !== id));
+    try {
+      await sbFetch(`/task_proposals?id=eq.${id}`, { method: "PATCH", prefer: "return=minimal", body: JSON.stringify({ status }) });
+    } catch (e) { console.error("Error actualizando propuesta:", e); }
+  }
+
+  function acceptProposal(p) {
+    const extra = [p.project ? `[${p.project}]` : "", p.waiting_for ? `Espera: ${p.waiting_for}.` : "", p.notes || "", p.subject ? `Correo: ${p.subject}` : ""].filter(Boolean).join(" ");
+    const target = p.task_id ? tasks.find(t => t.id === p.task_id) : null;
+    if (p.kind === "actualizacion" && target) {
+      saveTasks(tasks.map(t => t.id !== target.id ? t : {
+        ...t, history: [...(t.history || []), { date: todayKey, comment: (p.title + (p.notes ? " — " + p.notes : "")).trim() }]
+      }));
+    } else {
+      saveTasks([...tasks, {
+        id: Date.now(), person: p.person || (members[0] || ""),
+        title: (p.kind === "incidencia" ? "[INCIDENCIA] " : "") + p.title,
+        priority: p.priority || "media", status: "pendiente", deadline: p.deadline || "",
+        notes: extra, createdAt: todayKey, history: []
+      }]);
+    }
+    setProposalStatus(p.id, "aceptada");
   }
 
   function addTask(form) {
@@ -814,6 +856,13 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
         const entry = { date: today, comment: `Fecha alargada de ${formatDate(t.deadline)} a ${formatDate(form.deadline)}` };
         updated.history = [...(t.history || []), entry];
       }
+      // Fecha exacta de cierre: se guarda la primera vez que pasa a completado,
+      // y se borra si se reabre, para que "media de cierre" sea un dato real, no estimado.
+      if (form.status === "completado" && t.status !== "completado") {
+        updated.completedAt = todayKey;
+      } else if (form.status !== "completado" && t.status === "completado") {
+        updated.completedAt = "";
+      }
       return updated;
     }));
     setModal(null);
@@ -833,6 +882,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
     if (t.status === "completado" && filterStatus !== "completado") return false;
     if (filterPerson !== "todos" && t.person !== filterPerson) return false;
     if (filterStatus !== "todos" && t.status !== filterStatus) return false;
+    if (filterVehicle !== "todos" && inferVehicleColor(t.title + " " + (t.notes||"")).label !== filterVehicle) return false;
     if (search.trim()) {
       const q = search.toLowerCase();
       if (!t.title.toLowerCase().includes(q) &&
@@ -891,7 +941,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
         </div>
         {/* Tabs in header */}
         <div style={{ display: "flex", overflowX: "auto", WebkitOverflowScrolling: "touch", borderTop: `1px solid ${COLORS.border}` }}>
-          {["tareas", "gantt", "notas", "kpis", "equipo"].map(tab => (
+          {["hoy", "tareas", "propuestas", "gantt", "notas", "kpis", "equipo"].map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)} style={{
               background: "transparent", border: "none", cursor: "pointer",
               padding: "10px 14px", fontFamily: "inherit", fontSize: 12,
@@ -900,7 +950,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
               borderBottom: `2px solid ${activeTab === tab ? COLORS.accent : "transparent"}`,
               transition: "all .15s"
             }}>
-              {tab === "notas" ? "📋 Notas" : tab === "gantt" ? "📊 Gantt" : tab === "kpis" ? "📈 KPIs" : tab === "tareas" ? "✅ Tareas" : "👥 Equipo"}
+              {tab === "hoy" ? "☀️ Hoy" : tab === "propuestas" ? `📥 Propuestas${proposals.length ? " (" + proposals.length + ")" : ""}` : tab === "notas" ? "📋 Notas" : tab === "gantt" ? "📊 Gantt" : tab === "kpis" ? "📈 KPIs" : tab === "tareas" ? "✅ Tareas" : "👥 Equipo"}
             </button>
           ))}
         </div>
@@ -956,6 +1006,75 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
           </div>
         )}
 
+
+        {/* Tab: Hoy */}
+        {activeTab === "hoy" && (() => {
+          const incidencias = proposals.filter(p => p.kind === "incidencia");
+          const esperandoRespuesta = proposals.filter(p => p.kind !== "incidencia" && p.priority === "alta");
+          const seguimiento = proposals.filter(p => p.kind !== "incidencia" && p.priority !== "alta");
+          const vencidas = tasks.filter(t => t.status !== "completado" && daysUntil(t.deadline) !== null && daysUntil(t.deadline) < 0);
+          const totalPropuestas = proposals.length;
+          const fechaHoy = new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
+
+          const Section = ({ title, color, items, emptyText }) => (
+            <Card className="bg-surface-raised border border-surface-border mb-4">
+              <Flex justifyContent="start" className="gap-2 mb-3">
+                <span className="h-2 w-2 rounded-full" style={{ background: color }} />
+                <Text className="text-gray-300 uppercase tracking-wider text-xs font-bold">{title}</Text>
+                <Text className="text-gray-500 text-xs">({items.length})</Text>
+              </Flex>
+              {items.length === 0 && <Text className="text-gray-600 text-sm">{emptyText}</Text>}
+              {items.map((p, i) => {
+                const vc = inferVehicleColor((p.title || "") + " " + (p.project || "") + " " + (p.subject || ""));
+                return (
+                  <div key={p.id || i} className="border-l-2 pl-3 py-2 mb-2" style={{ borderColor: vc.hex }}>
+                    <Flex justifyContent="between" alignItems="start">
+                      <div className="flex-1 pr-2">
+                        <Text className="text-gray-100 text-sm font-medium">{p.title}</Text>
+                        <Text className="text-gray-500 text-xs mt-0.5">{p.person}{p.project ? ` · ${p.project}` : ""}</Text>
+                        {p.reason && <Text className="text-gray-500 text-xs mt-1">{p.reason}</Text>}
+                      </div>
+                      {p.id && (
+                        <div className="flex gap-1 flex-shrink-0">
+                          <button onClick={() => acceptProposal(p)} className="text-xs px-2 py-1 rounded bg-green-900/40 text-green-400 hover:bg-green-900/60">✓</button>
+                          <button onClick={() => setProposalStatus(p.id, "descartada")} className="text-xs px-2 py-1 rounded bg-gray-800 text-gray-500 hover:bg-gray-700">✕</button>
+                        </div>
+                      )}
+                    </Flex>
+                  </div>
+                );
+              })}
+            </Card>
+          );
+
+          return (
+            <div>
+              <Text className="text-gray-500 text-xs uppercase tracking-widest mb-1">{fechaHoy}</Text>
+              <Flex className="gap-3 mb-5 flex-wrap">
+                <Card className="bg-surface-raised border border-surface-border flex-1 min-w-[90px]" decoration="top" decorationColor="red">
+                  <Text className="text-gray-500 text-xs">Urgente</Text>
+                  <Metric className="text-red-400 text-2xl font-mono">{incidencias.length + vencidas.length}</Metric>
+                </Card>
+                <Card className="bg-surface-raised border border-surface-border flex-1 min-w-[90px]" decoration="top" decorationColor="amber">
+                  <Text className="text-gray-500 text-xs">Esperando tú</Text>
+                  <Metric className="text-amber-400 text-2xl font-mono">{esperandoRespuesta.length}</Metric>
+                </Card>
+                <Card className="bg-surface-raised border border-surface-border flex-1 min-w-[90px]" decoration="top" decorationColor="blue">
+                  <Text className="text-gray-500 text-xs">Propuestas</Text>
+                  <Metric className="text-blue-400 text-2xl font-mono">{totalPropuestas}</Metric>
+                </Card>
+                <Card className="bg-surface-raised border border-surface-border flex-1 min-w-[90px]" decoration="top" decorationColor="gray">
+                  <Text className="text-gray-500 text-xs">Sin actividad 7d+</Text>
+                  <Metric className="text-gray-300 text-2xl font-mono">{staleTasks.length}</Metric>
+                </Card>
+              </Flex>
+
+              <Section title="Urgente / riesgo" color="#e5484d" items={[...incidencias, ...vencidas.map(t => ({ id: "t"+t.id, title: t.title, person: t.person, reason: "Vencida" }))]} emptyText="Nada urgente hoy." />
+              <Section title="Esperando tu respuesta" color="#f5a623" items={esperandoRespuesta} emptyText="Nada pendiente de ti." />
+              <Section title="Seguimiento del equipo" color="#5b6472" items={seguimiento} emptyText="Sin novedades de seguimiento." />
+            </div>
+          );
+        })()}
 
         {/* Tab: Tareas */}
         {activeTab === "tareas" && (
@@ -1068,6 +1187,11 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                     <option value="todos">Activas ({tasks.filter(t => t.status !== "completado").length})</option>
                     {Object.entries(STATUS_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label} ({tasks.filter(t => t.status === k).length})</option>)}
                   </select>
+                  <select value={filterVehicle} onChange={e => setFilterVehicle(e.target.value)}
+                    style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 5, color: COLORS.text, padding: "7px 12px", fontSize: 12, outline: "none", fontFamily: "inherit" }}>
+                    <option value="todos">Todos los proyectos</option>
+                    {Object.values(VEHICLE_COLORS).map(v => <option key={v.label} value={v.label}>{v.label}</option>)}
+                  </select>
                 </div>
 
                 {filtered.length === 0 ? (
@@ -1098,6 +1222,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                               {task.title}
                             </div>
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                              {(() => { const vc = inferVehicleColor(task.title + " " + (task.notes||"")); return vc.label !== "General / Otros" ? <span title={vc.label} style={{ width: 8, height: 8, borderRadius: 999, background: vc.hex, flexShrink: 0 }} /> : null; })()}
                               <span style={{ fontSize: 12, color: COLORS.accent, fontWeight: 600 }}>{task.person}</span>
                               <span style={{ color: COLORS.border }}>·</span>
                               <Tag label={STATUS_CONFIG[task.status]?.label} color={STATUS_CONFIG[task.status]?.color} />
@@ -1487,15 +1612,20 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                 const total = mtasks.length;
                 const completionRate = total > 0 ? Math.round((completed.length / total) * 100) : 0;
 
-                // Average completion time
-                const completedWithDates = completed.filter(t => t.createdAt && t.history && t.history.length > 0);
-                const avgDays = completedWithDates.length > 0
-                  ? Math.round(completedWithDates.reduce((acc, t) => {
+                // Media de cierre: solo con fecha real de "completado" (completedAt),
+                // no con el historial (que mezcla otros eventos como fechas alargadas).
+                // completedAt solo existe para tareas completadas desde que se añadió este campo,
+                // así que es una media parcial hasta que haya más datos — se muestra el tamaño
+                // de la muestra para que no parezca más precisa de lo que es.
+                const completedWithExactDate = completed.filter(t => t.createdAt && t.completedAt);
+                const avgDays = completedWithExactDate.length > 0
+                  ? Math.round(completedWithExactDate.reduce((acc, t) => {
                       const created = new Date(t.createdAt + "T00:00:00");
-                      const lastHistory = new Date(t.history[t.history.length-1].date + "T00:00:00");
-                      return acc + Math.max(0, (lastHistory - created) / 86400000);
-                    }, 0) / completedWithDates.length)
+                      const done = new Date(t.completedAt + "T00:00:00");
+                      return acc + Math.max(0, (done - created) / 86400000);
+                    }, 0) / completedWithExactDate.length)
                   : null;
+                const avgDaysSample = completedWithExactDate.length;
 
                 // Workload score (active tasks weighted by priority)
                 const workload = active.reduce((acc, t) => {
@@ -1503,7 +1633,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                   return acc + w;
                 }, 0);
 
-                return { m, active: active.length, completed: completed.length, blocked: blocked.length, overdue: overdue.length, total, completionRate, avgDays, workload };
+                return { m, active: active.length, completed: completed.length, blocked: blocked.length, overdue: overdue.length, total, completionRate, avgDays, avgDaysSample, workload };
               }).filter(s => s.total > 0).sort((a, b) => b.workload - a.workload);
 
               const maxWorkload = Math.max(...memberStats.map(s => s.workload), 1);
@@ -1525,6 +1655,21 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                       </div>
                     ))}
                   </div>
+
+                  {/* Gráfica de estado actual (todo en la misma escala: ahora mismo, no histórico) */}
+                  <Card className="bg-surface-raised border border-surface-border mb-6">
+                    <Text className="text-gray-400 text-xs uppercase tracking-wider mb-3">Estado actual por persona (activas / bloqueadas / vencidas)</Text>
+                    <Text className="text-gray-600 text-xs mb-2">No incluye completadas: son un acumulado histórico y no son comparables con una foto de ahora mismo.</Text>
+                    <BarChart
+                      className="h-60 mt-2"
+                      data={memberStats.map(s => ({ name: s.m.split(" ")[0], Activas: s.active, Bloqueadas: s.blocked, Vencidas: s.overdue }))}
+                      index="name"
+                      categories={["Activas", "Bloqueadas", "Vencidas"]}
+                      colors={["blue", "amber", "red"]}
+                      yAxisWidth={30}
+                      showAnimation={true}
+                    />
+                  </Card>
 
                   {/* Per person KPIs */}
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1554,7 +1699,7 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                           <div style={{ fontSize: 12 }}><span style={{ color: COLORS.success, fontWeight: 600 }}>{s.completed}</span> <span style={{ color: COLORS.muted }}>completadas</span></div>
                           {s.blocked > 0 && <div style={{ fontSize: 12 }}><span style={{ color: COLORS.danger, fontWeight: 600 }}>{s.blocked}</span> <span style={{ color: COLORS.muted }}>bloqueadas</span></div>}
                           {s.overdue > 0 && <div style={{ fontSize: 12 }}><span style={{ color: COLORS.danger, fontWeight: 600 }}>⚠️ {s.overdue}</span> <span style={{ color: COLORS.muted }}>vencidas</span></div>}
-                          {s.avgDays !== null && <div style={{ fontSize: 12 }}><span style={{ color: COLORS.accent, fontWeight: 600 }}>{s.avgDays}d</span> <span style={{ color: COLORS.muted }}>media completado</span></div>}
+                          {s.avgDays !== null && <div style={{ fontSize: 12 }} title={`Calculado sobre ${s.avgDaysSample} de ${s.completed} tareas completadas (las únicas con fecha de cierre registrada)`}><span style={{ color: COLORS.accent, fontWeight: 600 }}>{s.avgDays}d</span> <span style={{ color: COLORS.muted }}>media cierre ({s.avgDaysSample}/{s.completed})</span></div>}
                         </div>
 
                         {/* Workload bar */}
@@ -1571,6 +1716,43 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                 </div>
               );
             })()}
+          </div>
+        )}
+
+        {/* Tab: Propuestas */}
+        {activeTab === "propuestas" && (
+          <div>
+            <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 12 }}>
+              Tareas e incidencias detectadas en tu correo. Acepta para crearlas (o anotarlas en la tarea existente) o descarta.
+            </div>
+            {proposals.length === 0 && (
+              <div style={{ padding: 30, textAlign: "center", color: COLORS.muted, border: `1px dashed ${COLORS.border}`, borderRadius: 8 }}>
+                No hay propuestas pendientes.
+              </div>
+            )}
+            {proposals.map(p => {
+              const target = p.task_id ? tasks.find(t => t.id === p.task_id) : null;
+              const kindColor = p.kind === "incidencia" ? COLORS.danger : p.kind === "actualizacion" ? COLORS.info : COLORS.accent;
+              return (
+                <div key={p.id} style={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderLeft: `3px solid ${kindColor}`, borderRadius: 8, padding: 12, marginBottom: 10 }}>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 6, fontSize: 10, letterSpacing: 1, textTransform: "uppercase" }}>
+                    <span style={{ color: kindColor, fontWeight: 700 }}>{p.kind === "actualizacion" ? "Actualización" : p.kind}</span>
+                    {p.project && <span style={{ color: COLORS.muted }}>· {p.project}</span>}
+                    {p.person && <span style={{ color: COLORS.muted }}>· {p.person}</span>}
+                    {p.deadline && <span style={{ color: COLORS.muted }}>· {formatDate(p.deadline)}</span>}
+                    {p.waiting_for && <span style={{ color: COLORS.muted }}>· espera: {p.waiting_for}</span>}
+                  </div>
+                  <div style={{ fontSize: 14, color: COLORS.text, fontWeight: 600, marginBottom: 4 }}>{p.title}</div>
+                  {target && <div style={{ fontSize: 11, color: COLORS.info, marginBottom: 4 }}>→ se anotará en: {target.title}</div>}
+                  {p.reason && <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 4 }}>{p.reason}</div>}
+                  <div style={{ fontSize: 11, color: COLORS.muted, marginBottom: 10 }}>✉ {p.subject} · {(p.sender || "").split("@")[0]}</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Btn style={{ fontSize: 11, padding: "6px 12px" }} onClick={() => acceptProposal(p)}>Aceptar</Btn>
+                    <Btn variant="ghost" style={{ fontSize: 11, padding: "6px 12px" }} onClick={() => setProposalStatus(p.id, "descartada")}>Descartar</Btn>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -1639,6 +1821,13 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                       color: COLORS.accentDim,
                       members: [
                         { name: "Nacho (Kaizen)", role: "Líder Kaizen", area: "Ambas líneas", scope: "Mejora continua · Implantación física layouts · Medios · Serigrafiado" }
+                      ]
+                    },
+                    {
+                      group: "CYP — Ingeniería Externa",
+                      color: "#06b6d4",
+                      members: [
+                        { name: "CYP", role: "Ingeniería externa (Amaru Ruiz, responsable)", area: "Soporte a Body y Trim", scope: "Apoyo a Javier Rey y Román Torres · Asignable como equipo interno" }
                       ]
                     }
                   ];

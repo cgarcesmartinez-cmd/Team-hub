@@ -939,6 +939,9 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
         @media (min-width: 900px) { .th-container { max-width: 1100px; padding: 20px 24px; } }
         @media (min-width: 1280px) { .th-container { max-width: 1280px; padding: 24px 32px; } }
         @media (max-width: 420px) { .th-container { padding: 12px 8px; } }
+        .th-metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        @media (min-width: 640px) { .th-metrics { grid-template-columns: repeat(4, 1fr); } }
+        .th-metrics .tremor-Card-root { height: 100%; }
       `}</style>
 
       {/* Header */}
@@ -1074,24 +1077,24 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
           return (
             <div>
               <Text className="text-gray-500 text-xs uppercase tracking-widest mb-1">{fechaHoy}</Text>
-              <Flex className="gap-3 mb-5 flex-wrap">
-                <Card className="bg-surface-raised border border-surface-border flex-1 min-w-[90px]" decoration="top" decorationColor="red">
+              <div className="th-metrics mb-5">
+                <Card className="bg-surface-raised border border-surface-border" decoration="top" decorationColor="red">
                   <Text className="text-gray-500 text-xs">Urgente</Text>
                   <Metric className="text-red-400 text-2xl font-mono">{incidencias.length + vencidas.length}</Metric>
                 </Card>
-                <Card className="bg-surface-raised border border-surface-border flex-1 min-w-[90px]" decoration="top" decorationColor="amber">
+                <Card className="bg-surface-raised border border-surface-border" decoration="top" decorationColor="amber">
                   <Text className="text-gray-500 text-xs">Esperando tú</Text>
                   <Metric className="text-amber-400 text-2xl font-mono">{esperandoRespuesta.length}</Metric>
                 </Card>
-                <Card className="bg-surface-raised border border-surface-border flex-1 min-w-[90px]" decoration="top" decorationColor="blue">
+                <Card className="bg-surface-raised border border-surface-border" decoration="top" decorationColor="blue">
                   <Text className="text-gray-500 text-xs">Propuestas</Text>
                   <Metric className="text-blue-400 text-2xl font-mono">{totalPropuestas}</Metric>
                 </Card>
-                <Card className="bg-surface-raised border border-surface-border flex-1 min-w-[90px]" decoration="top" decorationColor="gray">
+                <Card className="bg-surface-raised border border-surface-border" decoration="top" decorationColor="gray">
                   <Text className="text-gray-500 text-xs">Sin actividad 7d+</Text>
                   <Metric className="text-gray-300 text-2xl font-mono">{staleTasks.length}</Metric>
                 </Card>
-              </Flex>
+              </div>
 
               <Section title="Urgente / riesgo" color="#e5484d" items={[...incidencias, ...vencidas.map(t => ({ id: "t"+t.id, title: t.title, person: t.person, reason: "Vencida", taskRef: t }))]} emptyText="Nada urgente hoy." />
               <Section title="Esperando tu respuesta" color="#f5a623" items={esperandoRespuesta} emptyText="Nada pendiente de ti." />

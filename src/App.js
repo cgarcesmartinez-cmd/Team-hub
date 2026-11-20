@@ -763,7 +763,8 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
       await Promise.all(toDelete.map(r =>
         sbFetch(`/tasks?id=eq.${r.id}`, { method: "DELETE", prefer: "return=minimal" })
       ));
-    } catch(e) { console.error("Error saving tasks:", e); }
+      return true;
+    } catch(e) { console.error("Error saving tasks:", e); return false; }
   }
 
   async function saveMeetingNotes(newNotes) {
@@ -799,6 +800,21 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
     try {
       await sbFetch(`/task_proposals?id=eq.${id}`, { method: "PATCH", prefer: "return=minimal", body: JSON.stringify({ status }) });
     } catch (e) { console.error("Error actualizando propuesta:", e); }
+  }
+
+  // Normaliza un nombre de persona (quita acentos/mayúsculas) para comparar sin que
+  // "Christian Chávez" (lo que a veces trae el análisis de correo) y "Christian Chavez"
+  // (el nombre real en el equipo) se traten como personas distintas.
+  function normalizeName(s) {
+    return (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  }
+  // Dado el nombre que trae una propuesta, lo hace coincidir con el miembro real del equipo
+  // (mismo nombre salvo acentos/mayúsculas); si no hay match, deja el texto tal cual.
+  function matchMember(person) {
+    if (!person) return person;
+    const target = normalizeName(person);
+    const found = members.find(m => normalizeName(m) === target);
+    return found || person;
   }
 
   // Detección de duplicados compartida entre "Nueva tarea" manual y aceptar propuestas de correo.
@@ -838,11 +854,11 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
         return;
       }
       saveTasks([...tasks, {
-        id: Date.now(), person: p.person || (members[0] || ""),
+        id: Date.now(), person: matchMember(p.person) || (members[0] || ""),
         title: (p.kind === "incidencia" ? "[INCIDENCIA] " : "") + p.title,
         priority: p.priority || "media", status: "pendiente", deadline: p.deadline || "",
         notes: extra, createdAt: todayKey, history: []
-      }]);
+      }]).then(ok => { if (!ok) alert("La tarea no se ha podido guardar (fallo de conexión con la base de datos). Vuelve a intentarlo en unos segundos."); });
     }
     setProposalStatus(p.id, "aceptada");
   }
@@ -1689,13 +1705,13 @@ ${Object.entries(byPerson).map(([person, pTasks]) => {
                     <Text className="text-gray-600 text-xs mb-2">No incluye completadas: son un acumulado histórico y no son comparables con una foto de ahora mismo.</Text>
                     <BarChart
                       className="mt-2"
-                      style={{ height: Math.max(220, memberStats.length * 42) }}
+                      style={{ height: Math.max(220, memberStats.length * 36) }}
                       layout="vertical"
-                      data={memberStats.map(s => ({ name: s.m, Activas: s.active, Bloqueadas: s.blocked, Vencidas: s.overdue }))}
+                      data={memberStats.map(s => ({ name: s.m.split(" ")[0], Activas: s.active, Bloqueadas: s.blocked, Vencidas: s.overdue }))}
                       index="name"
                       categories={["Activas", "Bloqueadas", "Vencidas"]}
                       colors={["blue", "amber", "red"]}
-                      yAxisWidth={90}
+                      yAxisWidth={70}
                       showAnimation={true}
                     />
                   </Card>
